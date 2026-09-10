@@ -1,0 +1,49 @@
+# Development infrastructure for Wedding Memory Vault.
+# PostgreSQL is required for the schema work in this phase.
+# MinIO and Redis are used by later phases (storage + async jobs).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wmv-postgres
+    environment:
+      POSTGRES_USER: wmv
+      POSTGRES_PASSWORD: wmv
+      POSTGRES_DB: wedding_memory_vault
+    ports:
+      - '5432:5432'
+    volumes:
+      - wmv_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U wmv -d wedding_memory_vault']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: wmv-minio
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: wmv
+      MINIO_ROOT_PASSWORD: wmv-secret
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - wmv_minio:/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: wmv-redis
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  wmv_pgdata:
+  wmv_minio:
