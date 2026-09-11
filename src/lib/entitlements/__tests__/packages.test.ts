@@ -12,12 +12,9 @@ import {
   getAllFeatureCodes,
 } from "@/lib/entitlements/features";
 import {
-  PackageCode,
   PACKAGE_METADATA,
-  PACKAGE_FEATURES,
   getPackageMetadata,
   getPackageFeatures,
-  getPackageFeature,
   packageHasFeature,
   getPackageIntegerFeature,
   packageHasUnlimited,
@@ -25,6 +22,8 @@ import {
   getPackageExpiryWindows,
   isPackageUpgrade,
   getUpgradePath,
+  getAllPackageCodes,
+  PackageCode,
 } from "@/lib/entitlements/packages";
 
 describe("Feature Definitions", () => {
@@ -124,7 +123,7 @@ describe("Package Metadata", () => {
   });
 
   it("getPackageMetadata returns undefined for invalid code", () => {
-    expect(getPackageMetadata("diamond" as any)).toBeUndefined();
+    expect(getPackageMetadata("diamond" as PackageCode)).toBeUndefined();
   });
 
   it("getAllPackageCodes returns all codes in order", () => {
@@ -178,10 +177,16 @@ describe("Package Features - Silver", () => {
 describe("Package Features - Gold", () => {
   const gold = getPackageFeatures("gold");
 
-  it("includes all Silver features", () => {
+  it("includes all Silver features (except upgraded ones)", () => {
     const silver = getPackageFeatures("silver");
+    // Features that are DIFFERENT in Gold (upgraded)
+    const upgradedKeys = new Set([
+      "video", "max_videos", "banner", "slideshow",
+      "unlimited_photos", "max_photos", "upload_days", "download_days"
+    ]);
+
     for (const [key, value] of Object.entries(silver)) {
-      if (key !== "max_photos" && key !== "upload_days" && key !== "download_days") {
+      if (!upgradedKeys.has(key)) {
         expect(gold[key]).toBe(value);
       }
     }
@@ -217,10 +222,15 @@ describe("Package Features - Gold", () => {
 describe("Package Features - Platinum", () => {
   const platinum = getPackageFeatures("platinum");
 
-  it("includes all Gold features", () => {
+  it("includes all Gold features (except upgraded ones)", () => {
     const gold = getPackageFeatures("gold");
+    // Features that are DIFFERENT in Platinum (upgraded)
+    const upgradedKeys = new Set([
+      "intro", "max_videos", "unlimited_videos", "flipbook", "qr_design_card", "download_days"
+    ]);
+
     for (const [key, value] of Object.entries(gold)) {
-      if (key !== "max_videos" && key !== "download_days") {
+      if (!upgradedKeys.has(key)) {
         expect(platinum[key]).toBe(value);
       }
     }

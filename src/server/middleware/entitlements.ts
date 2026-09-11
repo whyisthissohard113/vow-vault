@@ -8,9 +8,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { weddings, vaults, weddingSettings } from "@/lib/db/schema";
+import { weddings, vaults, weddingSettings, products } from "@/lib/db/schema";
 import type { TenantContext } from "./tenant";
-import { requireTenant, validateTenantAccess } from "./tenant";
+import { validateTenantAccess } from "./tenant";
 import { resolveEntitlements, type ResolvedEntitlements } from "@/lib/entitlements";
 import { TenantMismatchError, ForbiddenError, NotFoundError } from "@/lib/auth/errors";
 
@@ -35,21 +35,22 @@ export type VaultIdHandler = (
 
 /**
  * Resolve entitlements for a wedding by ID.
- * Fetches wedding, package, and wedding settings, then calculates full entitlements.
+ * Fetches wedding, joins with product for package code, and wedding settings, then calculates full entitlements.
  */
 export async function resolveWeddingEntitlements(
   weddingId: string,
   tenant: TenantContext,
 ): Promise<ResolvedEntitlements> {
-  // Verify tenant access
+  // Verify tenant access - join with products to get package code
   const wedding = await db
     .select({
       id: weddings.id,
-      packageCode: weddings.packageCode,
+      productCode: products.code,
       weddingDate: weddings.weddingDate,
       organizationId: weddings.organizationId,
     })
     .from(weddings)
+    .leftJoin(products, eq(weddings.productId, products.id))
     .where(
       and(
         eq(weddings.id, weddingId),
@@ -65,23 +66,31 @@ export async function resolveWeddingEntitlements(
 
   const w = wedding[0];
 
+  if (!w.productCode) {
+    throw new NotFoundError("Product for wedding");
+  }
+
   // Validate tenant access (platform users can access any tenant)
   validateTenantAccess(tenant, w.organizationId);
 
-  // Fetch wedding settings for feature overrides
-  const settings = await db
+  // Fetch wedding settings (for future feature overrides)
+  // Note: featuresOverrides column not yet in schema, placeholder for future
+  await db
     .select()
     .from(weddingSettings)
     .where(eq(weddingSettings.weddingId, weddingId))
     .limit(1);
 
-  const featureOverrides = settings[0]?.featuresOverrides as Record<string, unknown> | undefined;
-
   // Resolve entitlements
+  // weddingDate is a Date object (DATE type from DB), convert to string for the resolver
+  const weddingDateStr = w.weddingDate
+    ? w.weddingDate.toISOString().split("T")[0]
+    : new Date().toISOString().split("T")[0];
+
   return resolveEntitlements({
-    packageCode: w.packageCode as "silver" | "gold" | "platinum",
-    weddingDate: { date: w.weddingDate },
-    featureOverrides,
+    packageCode: w.productCode as "silver" | "gold" | "platinum",
+    weddingDate: { date: weddingDateStr },
+    // featureOverrides will be implemented when schema supports it
   });
 }
 
@@ -145,7 +154,8 @@ export function withWeddingEntitlements(handler: EntitlementHandler) {
       if (error instanceof NotFoundError) {
         return NextResponse.json({ error: error.message }, { status: 404 });
       }
-      throw error;
+      console.error("[withWeddingEntitlements] Unexpected error:", error);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
   };
 }
@@ -176,7 +186,8 @@ export function withVaultEntitlements(handler: EntitlementHandler) {
       if (error instanceof NotFoundError) {
         return NextResponse.json({ error: error.message }, { status: 404 });
       }
-      throw error;
+      console.error("[withVaultEntitlements] Unexpected error:", error);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
   };
 }

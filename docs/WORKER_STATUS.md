@@ -6,8 +6,8 @@
 | Architect | READY | — | — |
 | Database | COMPLETE | PostgreSQL + Drizzle schema (37 tables), migration `0000_shiny_the_santerians.sql` applied & verified | — |
 | Auth/RBAC/Tenancy | COMPLETE | NextAuth v5 + RBAC (8 roles, 15 permissions) + tenant isolation + guest sessions + auth guards + 99 tests passing | — |
-| Entitlements | READY | Next: products/features tables exist; implement entitlement checks | — |
-| Builder | READY | Next: build_jobs tables exist; implement build engine | — |
+| Entitlements | COMPLETE | Feature defs (21), packages (3), expiry calc (JNB), guards, 123 tests passing | — |
+| Builder | COMPLETE | Build engine (15 steps), idempotent, retryable, observable, 18 tests passing | — |
 | Frontend | READY | — | — |
 | Public Vault | READY | Next: vaults/guest_sessions tables exist; implement guest flow | — |
 | Media/Storage | READY | Next: media tables exist; implement upload pipeline | — |

@@ -7,6 +7,9 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts"],
     exclude: ["node_modules", ".next", "out", "build"],
+    env: {
+      DATABASE_URL: "postgresql://wmv:wmv@localhost:5432/wedding_memory_vault",
+    },
   },
   resolve: {
     alias: {

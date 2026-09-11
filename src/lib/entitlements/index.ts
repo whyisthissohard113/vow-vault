@@ -8,7 +8,7 @@
  */
 
 import { type PackageCode, PackageFeatureValues, getPackageFeatures } from "./packages";
-import { type FeatureCode, FEATURE_MAP } from "./features";
+import { type FeatureCode, FEATURE_MAP, FEATURE_DEFINITIONS } from "./features";
 import {
   calculateExpiryDeadlines,
   type ExpiryDeadlines,
@@ -124,12 +124,25 @@ export function getEntitlementIntegerFeature(
 
 /**
  * Check if entitlements include a specific feature by name (convenience).
+ * Maps friendly names to actual feature codes.
  */
 export function hasFeature(
   entitlements: ResolvedEntitlements,
-  feature: "photos" | "videos" | "banner" | "intro" | "slideshow" | "flipbook" | "qr_design_card",
+  feature: "photos" | "videos" | "video" | "banner" | "intro" | "slideshow" | "flipbook" | "qr_design_card",
 ): boolean {
-  return entitlementHasFeature(entitlements, feature);
+  // Map friendly names to actual feature codes
+  const featureMap: Record<string, string> = {
+    videos: "video",
+    video: "video",
+    photos: "photos",
+    banner: "banner",
+    intro: "intro",
+    slideshow: "slideshow",
+    flipbook: "flipbook",
+    qr_design_card: "qr_design_card",
+  };
+  const code = featureMap[feature] ?? feature;
+  return entitlementHasFeature(entitlements, code as FeatureCode);
 }
 
 /**
@@ -261,8 +274,9 @@ export function getPackageFeatureSummary(packageCode: PackageCode): Array<{
 }
 
 // Re-export types for convenience
-export type { PackageCode, PackageFeatureValues, FeatureCode } from "./packages";
+export type { PackageCode, PackageFeatureValues } from "./packages";
+export type { FeatureCode } from "./features";
 export type { ExpiryDeadlines, WeddingDateInput } from "./expiry";
 export { BUSINESS_TIMEZONE } from "./expiry";
-export { PackageCode, PACKAGE_METADATA, getPackageFeatures } from "./packages";
+export { PACKAGE_METADATA, getPackageFeatures } from "./packages";
 export { FEATURE_DEFINITIONS, FEATURE_CATEGORIES, getFeatureDefinition } from "./features";

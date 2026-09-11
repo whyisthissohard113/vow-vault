@@ -84,3 +84,14 @@ export class PrivilegeEscalationError extends AuthError {
   message = "Cannot assign a role higher than your own";
   code = "privilege_escalation";
 }
+
+// ── Resource Errors ─────────────────────────────────────────────────────────────
+
+export class NotFoundError extends AuthError {
+  code = "not_found";
+
+  constructor(resource: string) {
+    super(`${resource} not found`);
+    this.message = `${resource} not found`;
+  }
+}

@@ -57,7 +57,7 @@ export class InvalidWeddingDateError extends Error {
  * The input date is treated as local to the business timezone (no time component).
  */
 function parseWeddingDate(input: WeddingDateInput): Date {
-  const tz = input.timezone ?? BUSINESS_TIMEZONE;
+  // Timezone is handled by the caller; input.date is treated as local to business timezone
   let date: Date;
 
   if (typeof input.date === "string") {
@@ -220,6 +220,11 @@ export function isDownloadOpen(downloadDeadline: Date, now: Date = new Date()): 
 
 /**
  * Get the current lifecycle status based on deadlines.
+ * Logic:
+ * - active: now < uploadDeadline (both windows open)
+ * - upload_closed: uploadDeadline <= now < downloadDeadline (uploads closed, downloads open)
+ * - expired: now >= downloadDeadline (both closed)
+ * Note: downloadOnly status is not used in current spec (download_only = upload_closed in practice)
  */
 export function getLifecycleStatusFromDeadlines(
   uploadDeadline: Date,

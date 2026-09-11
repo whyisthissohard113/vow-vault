@@ -14,22 +14,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { requireTenant, type TenantContext } from "./tenant";
 import type { OrganizationRole } from "@/lib/auth/roles";
-import { hasPermission, type Permission } from "@/lib/auth/permissions";
+import { hasPermission, Permission } from "@/lib/auth/permissions";
 import {
   UnauthorizedError,
   ForbiddenError,
   TenantMismatchError,
 } from "@/lib/auth/errors";
 
+export { Permission } from "@/lib/auth/permissions";
+
 // ── Types ───────────────────────────────────────────────────────────────────
+
+export type RouteParams = Promise<Record<string, string> | { id: string }>;
 
 export type AuthenticatedHandler = (
   request: NextRequest,
-  context: { tenant: TenantContext },
+  context: { tenant: TenantContext; params: RouteParams },
 ) => Promise<NextResponse>;
 
 export type RawHandler = (
   request: NextRequest,
+  context: { params: RouteParams },
 ) => Promise<NextResponse>;
 
 // ── Guard HOFs ──────────────────────────────────────────────────────────────
@@ -39,7 +44,7 @@ export type RawHandler = (
  * Calls `handler` with the request if authenticated, otherwise returns 401.
  */
 export function withAuth(handler: RawHandler): RawHandler {
-  return async (request: NextRequest) => {
+  return async (request: NextRequest, context: { params: RouteParams }) => {
     try {
       const session = await auth();
       if (!session?.user?.id) {
@@ -48,7 +53,7 @@ export function withAuth(handler: RawHandler): RawHandler {
           { status: 401 },
         );
       }
-      return handler(request);
+      return handler(request, context);
     } catch (error) {
       if (error instanceof UnauthorizedError) {
         return NextResponse.json({ error: error.message }, { status: 401 });
@@ -63,7 +68,7 @@ export function withAuth(handler: RawHandler): RawHandler {
  * Passes `{ tenant }` as the second argument to the handler.
  */
 export function withTenant(handler: AuthenticatedHandler): RawHandler {
-  return async (request: NextRequest) => {
+  return async (request: NextRequest, context: { params: RouteParams }) => {
     try {
       // Try to extract org ID from query params or headers
       const url = new URL(request.url);
@@ -72,7 +77,7 @@ export function withTenant(handler: AuthenticatedHandler): RawHandler {
         request.headers.get("x-organization-id");
 
       const tenant = await requireTenant(orgId ?? undefined);
-      return handler(request, { tenant });
+      return handler(request, { tenant, params: context.params });
     } catch (error) {
       if (error instanceof UnauthorizedError) {
         return NextResponse.json({ error: error.message }, { status: 401 });
