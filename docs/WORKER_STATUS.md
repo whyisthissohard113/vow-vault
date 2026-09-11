@@ -10,7 +10,7 @@
 | Builder | COMPLETE | Build engine (15 steps), idempotent, retryable, observable, 18 tests passing | — |
 | Frontend | READY | — | — |
 | Public Vault | READY | Next: vaults/guest_sessions tables exist; implement guest flow | — |
-| Media/Storage | READY | Next: media tables exist; implement upload pipeline | — |
+| Media/Storage | COMPLETE | S3/R2 abstraction (SigV4 presigned PUT/GET), media service (MIME+signature+size+entitlement validation, safe keys, sha256 dedupe), async processing worker (thumbnails, variants, content hash), dual-mode staff/guest API, tenant isolation, 47 tests | — |
 | QR/Generated Assets | READY | Next: qr tables exist; implement generation jobs | — |
 | Payments | READY | Next: payments/payment_events tables exist; implement PayFast + webhooks | — |
 | Email/Automation | READY | Next: email_jobs tables exist; implement queuing | — |

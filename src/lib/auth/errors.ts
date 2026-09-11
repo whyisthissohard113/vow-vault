@@ -95,3 +95,50 @@ export class NotFoundError extends AuthError {
     this.message = `${resource} not found`;
   }
 }
+
+// ── Media / Storage Errors ──────────────────────────────────────────────────────
+
+export class MediaValidationError extends AuthError {
+  code = "media_validation";
+
+  constructor(message = "Invalid media request") {
+    super(message);
+    this.message = message;
+  }
+}
+
+export class MediaMimeRejectedError extends MediaValidationError {
+  code = "media_mime_rejected";
+
+  constructor(message = "Media type is not supported") {
+    super(message);
+    this.message = message;
+  }
+}
+
+export class MediaSignatureRejectedError extends MediaValidationError {
+  code = "media_signature_rejected";
+
+  constructor(message = "File content does not match the declared media type") {
+    super(message);
+    this.message = message;
+  }
+}
+
+export class MediaSizeExceededError extends MediaValidationError {
+  code = "media_size_exceeded";
+
+  constructor(message = "File exceeds the allowed size limit") {
+    super(message);
+    this.message = message;
+  }
+}
+
+export class DuplicateMediaError extends MediaValidationError {
+  code = "duplicate_media";
+
+  constructor(message = "A media item with identical content already exists") {
+    super(message);
+    this.message = message;
+  }
+}

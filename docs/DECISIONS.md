@@ -6,3 +6,4 @@ See `docs/decisions/` for material decisions.
 - ADR-003 — Auth, RBAC, and multi-tenant isolation (`docs/decisions/ADR-003-auth-rbac-tenancy.md`)
 - ADR-004 — Product catalog and entitlement engine (`docs/decisions/ADR-004-entitlements.md`)
 - ADR-005 — Wedding Build Engine (`docs/decisions/ADR-005-build-engine.md`)
+- ADR-006 — Media Storage Pipeline (`docs/decisions/ADR-006-media-storage.md`)
