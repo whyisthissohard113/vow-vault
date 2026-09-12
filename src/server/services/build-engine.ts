@@ -15,7 +15,7 @@
  * - No duplicates: (wedding_id, version) unique index prevents duplicate production vaults
  */
 
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, and, isNull, desc, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
@@ -28,17 +28,19 @@ import {
   flipbooks,
   expiryRules,
   lifecycleEvents,
-  emailJobs,
   orders,
   payments,
   products,
   templateVersions,
+  customers,
 } from "@/lib/db/schema";
 import { resolveEntitlements, type ResolvedEntitlements } from "@/lib/entitlements";
 import { calculateExpiryDeadlines, type ExpiryDeadlines } from "@/lib/entitlements/expiry";
 import { NotFoundError } from "@/lib/auth/errors";
 import { createQrCode } from "@/server/services/qr-service";
 import { generateQrCardPng } from "@/server/services/qr-card-generator";
+import { enqueueEmail } from "@/server/email/queue";
+import { notifySupport } from "@/server/email/support";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -208,12 +210,19 @@ export async function enqueueBuild(input: BuildInput): Promise<{
  * Processes steps sequentially with retry logic.
  */
 export async function executeBuild(buildJobId: string): Promise<void> {
-  // Fetch job with lock to prevent concurrent execution
+  // Claim the job with a compare-and-set update: only a job still in `pending`
+  // may be claimed by this worker, so concurrent workers (or a duplicate call
+  // from the retry path) can never run the same build twice.
   const [job] = await db
-    .select()
-    .from(buildJobs)
+    .update(buildJobs)
+    .set({
+      status: "processing",
+      startedAt: new Date(),
+      attempts: sql`${buildJobs.attempts} + 1`,
+      updatedAt: new Date(),
+    })
     .where(and(eq(buildJobs.id, buildJobId), eq(buildJobs.status, "pending")))
-    .limit(1);
+    .returning();
 
   if (!job) {
     // Job might already be processing/completed/failed
@@ -228,11 +237,8 @@ export async function executeBuild(buildJobId: string): Promise<void> {
     return;
   }
 
-  // Mark job as started
-  await db
-    .update(buildJobs)
-    .set({ status: "processing", startedAt: new Date(), attempts: job.attempts + 1 })
-    .where(eq(buildJobs.id, buildJobId));
+  // Notify the customer that the build pipeline started (idempotent per job).
+  await enqueueBuildStartedEmail(job);
 
   try {
     // Load context
@@ -255,7 +261,7 @@ export async function executeBuild(buildJobId: string): Promise<void> {
 
     console.log(`[BuildEngine] Build ${buildJobId} completed successfully`);
   } catch (error) {
-    await handleBuildError(buildJobId, error as Error, job.attempts + 1);
+    await handleBuildError(buildJobId, error as Error, job.attempts);
   }
 }
 
@@ -444,6 +450,12 @@ async function handleBuildError(buildJobId: string, error: Error & { nonRetryabl
   const isNonRetryable = error.nonRetryable === true;
   const isRetryable = !isNonRetryable && attempt < MAX_ATTEMPTS;
 
+  const [job] = await db
+    .select()
+    .from(buildJobs)
+    .where(eq(buildJobs.id, buildJobId))
+    .limit(1);
+
   await db
     .update(buildJobs)
     .set({
@@ -460,6 +472,16 @@ async function handleBuildError(buildJobId: string, error: Error & { nonRetryabl
     setTimeout(() => executeBuild(buildJobId), delayMs);
   } else {
     console.log(`[BuildEngine] Build ${buildJobId} failed permanently${isNonRetryable ? " (non-retryable error)" : " (max attempts reached)"}: ${error.message}`);
+
+    // Notify the customer that the build failed and alert the organization.
+    if (job) {
+      await enqueueBuildFailureEmail(job, error.message);
+      await notifySupport(
+        job.organizationId,
+        `Build failed for wedding ${job.weddingId}`,
+        `Build job ${buildJobId} for wedding ${job.weddingId} failed permanently.\n\nError: ${error.message}`,
+      );
+    }
   }
 }
 
@@ -892,56 +914,65 @@ async function stepQueueEmail(ctx: BuildContext): Promise<Partial<BuildContext>>
 
   if (!vault) throw new Error("Vault not created");
 
-  // Queue "vault_ready" email to the couple
-  // Find customer email
-  // In a real implementation, you'd fetch the customer record
-  const idempotencyKey = `vault_ready_${wedding.id}_${ctx.version}`;
+  const customerContact = await resolveCustomerEmail(wedding.id);
+  if (!customerContact) {
+    console.warn(`[BuildEngine] Wedding ${wedding.id} has no customer record; skipping vault_ready email`);
+    return { emailQueued: false, reason: "No customer email for vault_ready notification" };
+  }
 
-  await db
-    .insert(emailJobs)
-    .values({
-      organizationId,
-      weddingId: wedding.id,
-      emailType: "vault_ready",
-      toEmail: "couple@example.com", // Would fetch from customer record
-      toName: `${wedding.partnerOneName} & ${wedding.partnerTwoName}`,
-      subject: `Your wedding vault is ready!`,
-      bodyHtml: `<p>Your ${product.name} wedding vault is ready at <a href="${process.env.NEXT_PUBLIC_APP_URL}/w/${vault.slug}">your vault</a>.</p>`,
-      bodyText: `Your ${product.name} wedding vault is ready at ${process.env.NEXT_PUBLIC_APP_URL}/w/${vault.slug}`,
-      templateKey: "vault_ready",
-      status: "pending",
-      idempotencyKey,
-      scheduledAt: new Date(),
-      maxAttempts: 3,
-      metadata: {
-        packageCode: product.code,
-        vaultSlug: vault.slug,
-        publicUrl: `/w/${vault.slug}`,
-      },
-    })
-    .onConflictDoNothing({ target: emailJobs.idempotencyKey });
+  const coupleName =
+    [wedding.partnerOneName, wedding.partnerTwoName].filter(Boolean).join(" & ") || "";
+  const publicUrl = `/w/${vault.slug}`;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+  // Queue "vault_ready" email to the couple (idempotent by idempotency key).
+  await enqueueEmail({
+    organizationId,
+    weddingId: wedding.id,
+    emailType: "vault_ready",
+    toEmail: customerContact.email,
+    toName: customerContact.fullName ?? (coupleName || undefined),
+    subject: `Your wedding vault is ready!`,
+    bodyHtml: `<p>Your ${product.name} wedding vault is ready at <a href="${baseUrl}${publicUrl}">your vault</a>.</p>`,
+    bodyText: `Your ${product.name} wedding vault is ready at ${baseUrl}${publicUrl}`,
+    templateKey: "vault_ready",
+    data: {
+      coupleName: coupleName || undefined,
+      customerName: customerContact.fullName ?? undefined,
+      partnerOneName: wedding.partnerOneName ?? undefined,
+      partnerTwoName: wedding.partnerTwoName ?? undefined,
+      publicUrl,
+      vaultUrl: `${baseUrl}${publicUrl}`,
+    },
+    metadata: {
+      packageCode: product.code,
+      vaultSlug: vault.slug,
+      publicUrl,
+    },
+    idempotencyKey: `vault_ready_${wedding.id}_${ctx.version}`,
+  });
 
   // If Platinum, also queue QR card email
   if (entitlementHasFeature(entitlements, "qr_design_card")) {
-    await db
-      .insert(emailJobs)
-      .values({
-        organizationId,
-        weddingId: wedding.id,
-        emailType: "qr_card",
-        toEmail: "couple@example.com",
-        toName: `${wedding.partnerOneName} & ${wedding.partnerTwoName}`,
-        subject: `Your Platinum QR cards are ready`,
-        bodyHtml: `<p>Your custom QR design cards are ready.</p>`,
-        bodyText: `Your custom QR design cards are ready.`,
-        templateKey: "qr_card",
-        status: "pending",
-        idempotencyKey: `qr_card_${wedding.id}_${ctx.version}`,
-        scheduledAt: new Date(),
-        maxAttempts: 3,
-        metadata: { packageCode: product.code },
-      })
-      .onConflictDoNothing({ target: emailJobs.idempotencyKey });
+    await enqueueEmail({
+      organizationId,
+      weddingId: wedding.id,
+      emailType: "qr_card",
+      toEmail: customerContact.email,
+      toName: customerContact.fullName ?? (coupleName || undefined),
+      subject: `Your Platinum QR cards are ready`,
+      bodyHtml: `<p>Your custom QR design cards are ready.</p>`,
+      bodyText: `Your custom QR design cards are ready.`,
+      templateKey: "qr_card",
+      data: {
+        coupleName: coupleName || undefined,
+        customerName: customerContact.fullName ?? undefined,
+        partnerOneName: wedding.partnerOneName ?? undefined,
+        partnerTwoName: wedding.partnerTwoName ?? undefined,
+      },
+      metadata: { packageCode: product.code },
+      idempotencyKey: `qr_card_${wedding.id}_${ctx.version}`,
+    });
   }
 
   return { emailQueued: true };
@@ -1001,6 +1032,73 @@ function generateSlug(partnerOne: string | null, partnerTwo: string | null, wedd
 
 function entitlementHasFeature(entitlements: ResolvedEntitlements, featureCode: string): boolean {
   return entitlements.features[featureCode] === true;
+}
+
+// ── Email helpers ──────────────────────────────────────────────────────────────
+
+interface CustomerContact {
+  email: string;
+  fullName: string | null;
+}
+
+/** Resolves the real customer email for a wedding (never a placeholder). */
+async function resolveCustomerEmail(weddingId: string): Promise<CustomerContact | null> {
+  const [row] = await db
+    .select({ email: customers.email, fullName: customers.fullName })
+    .from(customers)
+    .innerJoin(weddings, eq(customers.id, weddings.customerId))
+    .where(eq(weddings.id, weddingId))
+    .limit(1);
+  return row ?? null;
+}
+
+/** Enqueues the build_started notification (idempotent per build job). */
+async function enqueueBuildStartedEmail(job: typeof buildJobs.$inferSelect): Promise<void> {
+  const customerContact = await resolveCustomerEmail(job.weddingId);
+  if (!customerContact) {
+    console.warn(`[BuildEngine] Wedding ${job.weddingId} has no customer record; skipping build_started email`);
+    return;
+  }
+
+  await enqueueEmail({
+    organizationId: job.organizationId,
+    weddingId: job.weddingId,
+    emailType: "build_started",
+    toEmail: customerContact.email,
+    toName: customerContact.fullName ?? undefined,
+    templateKey: "build_started",
+    data: {
+      customerName: customerContact.fullName ?? undefined,
+      buildInfo: `Build v${job.version} started`,
+    },
+    metadata: { buildJobId: job.id, version: job.version },
+    idempotencyKey: `build_started_${job.id}`,
+  });
+}
+
+/** Enqueues the build_failure notification (idempotent per build job). */
+async function enqueueBuildFailureEmail(job: typeof buildJobs.$inferSelect, errorMessage: string): Promise<void> {
+  const customerContact = await resolveCustomerEmail(job.weddingId);
+  if (!customerContact) {
+    console.warn(`[BuildEngine] Wedding ${job.weddingId} has no customer record; skipping build_failure email`);
+    return;
+  }
+
+  await enqueueEmail({
+    organizationId: job.organizationId,
+    weddingId: job.weddingId,
+    emailType: "build_failure",
+    toEmail: customerContact.email,
+    toName: customerContact.fullName ?? undefined,
+    templateKey: "build_failure",
+    data: {
+      customerName: customerContact.fullName ?? undefined,
+      buildInfo: `Build job ${job.id} failed.`,
+      buildJobId: job.id,
+    },
+    metadata: { buildJobId: job.id, errorMessage, version: job.version },
+    idempotencyKey: `build_failed_${job.id}`,
+  });
 }
 
 // Re-export for testing

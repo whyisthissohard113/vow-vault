@@ -168,6 +168,14 @@ export const emailJobType = pgEnum('email_job_type', [
   'reminder_upload',
   'expiry_warning',
   'build_failure',
+  'build_started',
+  'qr_ready',
+  'download_reminder',
+  'upload_expiry_warning',
+  'download_expiry_warning',
+  'upload_closed',
+  'download_closed',
+  'support_notification',
 ]);
 
 export const emailJobStatus = pgEnum('email_job_status', ['pending', 'sending', 'sent', 'failed', 'cancelled']);
