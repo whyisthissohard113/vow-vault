@@ -53,11 +53,31 @@ vitest               → 15 files / 334 tests passed (exit 0)
 git status --short   → (clean)
 ```
 
+## Follow-up (same day): warning cleanup + local smoke test
+
+- **Lint warnings eliminated** — all 25 findings (unused imports/dead vars in
+  `build-engine.ts`, `build-worker.ts`, `build/[id]/retry/route.ts`, and the
+  QR/build-engine test files) removed. `eslint` now reports **0 problems**.
+  Commit `49c460b`.
+- **Local smoke test** (`next dev`, Postgres up) — all routes verified:
+  marketing pages, examples, login/register all 200; `/dashboard` redirects
+  307 to `/login` when unauthenticated; protected APIs (`/api/qr/*`,
+  `/api/build`) return 401/405 as designed; `/api/auth/session` 200;
+  `/w/<unknown>` returns 404 by design.
+- **Found + fixed a real runtime bug**: `/faq` crashed with 500
+  (“Event handlers cannot be passed to Client Component props”) because the
+  page was a Server Component containing `onClick`/`onSubmit`. Converted to a
+  client component with a working accordion (`useState`, `aria-expanded`) and
+  a contact form success state. Commit `d14a79c`. `/faq` now 200.
+- Final state after follow-up: tsc 0 errors, eslint 0 problems,
+  **334/334 tests pass**, worktree clean.
+
 ## Remaining known items (do not block this session)
 
 - 25 eslint **warnings** (not errors) — unused vars in `build-engine.ts`,
   `build-worker.ts`, `build-engine.test.ts`, `qr-service.test.ts`,
   `media-service.test.ts` (e.g. `randomUUID`, `staleThreshold`, `inArray`).
+  *(Resolved 2026-09-12 — commit `49c460b`.)*
 - Payments (PayFast) / webhooks not implemented yet (tables exist).
 - Email/Automation queue not routed to SMTP provider yet.
 - Admin portal, Marketing, QA/Security, DevOps (CI/CD) phases not started.
