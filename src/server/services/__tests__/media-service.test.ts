@@ -11,8 +11,8 @@
  *  4. completeUpload with a genuine object enqueues 3 processing jobs
  *  5. completeUpload detects a content/signature mismatch
  *  6. Content-hash duplicate hint returns a duplicate payload (no new row)
- *  7. Guest upload init derives scope from the vault (no storageKey leaked)
- *  8. Guest complete verifies the object and increments the guest upload count
+ *  7. Guest upload init derives scope from the vault (publicId only; no ids/keys)
+ *  8. Guest complete by public id verifies the object and increments the count
  *  9. Worker: missing object → content_hash exhausts attempts → media failed
  * 10. retryProcessingJobs resets a failed job → completes → media processed
  */
@@ -47,6 +47,7 @@ import {
   initiateUpload,
   initiateGuestUpload,
   completeUpload,
+  completeGuestUploadByPublicId,
   retryProcessingJobs,
   listProcessingJobs,
   getMediaWithVariants,
@@ -240,6 +241,7 @@ async function setupForeignTenant(): Promise<void> {
 
   await db.insert(media).values({
     id: FOREIGN_MEDIA_ID,
+    publicId: `${FOREIGN_MEDIA_ID.replace(/-/g, "").slice(0, 32)}`,
     weddingId: FOREIGN_WEDDING_ID,
     organizationId: FOREIGN_ORG_ID,
     storageKey: `${FOREIGN_ORG_ID}/${FOREIGN_WEDDING_ID}/${FOREIGN_MEDIA_ID}.jpg`,
@@ -260,6 +262,11 @@ async function cleanupForeignTenant() {
 
 async function getMediaRow(mediaId: string) {
   const [row] = await db.select().from(media).where(eq(media.id, mediaId)).limit(1);
+  return row;
+}
+
+async function getMediaRowByPublicId(publicId: string) {
+  const [row] = await db.select().from(media).where(eq(media.publicId, publicId)).limit(1);
   return row;
 }
 
@@ -533,7 +540,7 @@ const row = await getMediaRow(result.mediaId!);
       return { rawToken, id: session.id };
     }
 
-    it("7. derives scope from the guest's vault and never exposes storage keys", async () => {
+    it("7. derives scope from the guest's vault and never exposes internal ids or storage keys", async () => {
       const { rawToken, id: sessionId } = await createGuestSession();
 
       const result = await initiateGuestUpload(rawToken, {
@@ -542,13 +549,16 @@ const row = await getMediaRow(result.mediaId!);
         sizeBytes: 2_500,
       });
 
-      expect(result.mediaId).toBeDefined();
+      // Guest contract: opaque publicId, no internal mediaId, no storage key.
+      expect(result.mediaId).toBeUndefined();
+      expect(result.publicId).toBeDefined();
+      expect(result.publicId).toMatch(/^[a-f0-9]{32}$/);
       expect(result.uploadUrl).toBeDefined();
       expect(result.uploadUrl!.startsWith("memory://")).toBe(true);
       expect(result.storageKey).toBeUndefined();
       expect(result.duplicateOf).toBeUndefined();
 
-      const row = await getMediaRow(result.mediaId!);
+      const row = await getMediaRowByPublicId(result.publicId!);
       expect(row!.organizationId).toBe(TEST_ORG_ID);
       expect(row!.weddingId).toBe(TEST_WEDDING_ID);
       expect(row!.guestSessionId).toBe(sessionId);
@@ -571,7 +581,7 @@ const row = await getMediaRow(result.mediaId!);
       expect(rows).toHaveLength(0);
     });
 
-    it("8. increments the guest session upload count on successful completion", async () => {
+    it("8. completes a guest upload by public id and increments the session count", async () => {
       const storage = memoryStorageClient();
       const { rawToken } = await createGuestSession();
 
@@ -581,10 +591,13 @@ const row = await getMediaRow(result.mediaId!);
         sizeBytes: 2_500,
       });
 
-      const row = await getMediaRow(result.mediaId!);
+      const row = await getMediaRowByPublicId(result.publicId!);
       await storage.putObject(row!.storageKey, await makeJpeg(), { contentType: "image/jpeg" });
 
-      await completeUpload(result.mediaId!, TEST_ORG_ID, { storage, guestToken: rawToken });
+      // Completion is addressed by opaque public id, scoped to the session.
+      const completed = await completeGuestUploadByPublicId(rawToken, result.publicId!, { storage });
+      expect(completed.status).toBe("processing");
+      expect(completed.publicId).toBe(result.publicId);
 
       const [session] = await db
         .select()
@@ -594,7 +607,7 @@ const row = await getMediaRow(result.mediaId!);
       expect(session!.uploadCount).toBe(1);
 
       // Guest uploads go through the same processing pipeline.
-      const jobs = await listProcessingJobs(result.mediaId!, TEST_ORG_ID);
+      const jobs = await listProcessingJobs(row!.id, TEST_ORG_ID);
       expect(jobs).toHaveLength(3);
     });
   });
@@ -725,6 +738,7 @@ const row = await getMediaRow(result.mediaId!);
       const seedKey = `${TEST_ORG_ID}/${TEST_WEDDING_ID}/${seedId}.jpg`;
       await db.insert(media).values({
         id: seedId,
+        publicId: seedId.replace(/-/g, "").slice(0, 32),
         weddingId: TEST_WEDDING_ID,
         organizationId: TEST_ORG_ID,
         storageKey: seedKey,

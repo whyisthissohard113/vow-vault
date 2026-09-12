@@ -87,7 +87,7 @@ async function handleGuestInitUpload(request: NextRequest) {
 
     // Guards for the optional result fields; a valid new-upload path always
     // provides all three, so this is purely defensive before exposing them.
-    if (!result.mediaId || !result.uploadUrl || !result.expiresAt) {
+    if (!result.publicId || !result.uploadUrl || !result.expiresAt) {
       return NextResponse.json(
         { error: "Upload initialization incomplete" },
         { status: 500 },
@@ -95,7 +95,7 @@ async function handleGuestInitUpload(request: NextRequest) {
     }
 
     return NextResponse.json({
-      mediaId: result.mediaId,
+      publicId: result.publicId,
       uploadUrl: result.uploadUrl,
       expiresAt: result.expiresAt,
     }, { status: 201 });

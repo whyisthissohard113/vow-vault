@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { eq, and, isNull, inArray } from "drizzle-orm";
+import { eq, and, isNull, inArray, or } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
@@ -162,9 +162,20 @@ async function cleanupTestData() {
   await db.delete(lifecycleEvents).where(eq(lifecycleEvents.weddingId, TEST_WEDDING_ID));
   await db.delete(emailJobs).where(eq(emailJobs.weddingId, TEST_WEDDING_ID));
   
-  // Delete orders and payments for this organization
-  await db.delete(payments).where(eq(payments.organizationId, TEST_ORG_ID));
-  await db.delete(orders).where(eq(orders.organizationId, TEST_ORG_ID));
+  // Delete orders and payments for this organization. Target the order FK by
+  // BOTH organizationId and productId: under parallel suites sharing the DB,
+  // an order row could be inserted between iterations of this cleanup, and
+  // deleting by productId (the FK target of products in this suite) closes
+  // that window before the products delete below.
+  await db.delete(payments).where(
+    and(eq(payments.organizationId, TEST_ORG_ID)),
+  );
+  await db.delete(orders).where(
+    or(
+      eq(orders.organizationId, TEST_ORG_ID),
+      eq(orders.productId, TEST_PRODUCT_ID),
+    ),
+  );
   
   // Delete wedding
   await db.delete(weddings).where(eq(weddings.id, TEST_WEDDING_ID));

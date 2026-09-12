@@ -87,6 +87,10 @@ export const media = pgTable(
     guestSessionId: uuid('guest_session_id').references(() => guestSessions.id, {
       onDelete: 'set null',
     }),
+    // Opaque 32-char public identifier. Guests reference media ONLY by this
+    // value in public vault/QR routes; the internal UUID and storage key are
+    // never exposed to guests.
+    publicId: varchar('public_id', { length: 32 }).notNull(),
     storageKey: text('storage_key').notNull(),
     filename: varchar('filename', { length: 255 }).notNull(),
     contentType: varchar('content_type', { length: 100 }).notNull(),
@@ -108,6 +112,11 @@ export const media = pgTable(
     // reusable after logical deletion, hence the partial unique index.
     uniqueIndex('media_org_storage_key_unique_idx')
       .on(table.organizationId, table.storageKey)
+      .where(sql`${table.deletedAt} is null`),
+    // Public IDs are unique while a media row is live; after soft-delete the
+    // public id may be recycled by the same partial-unique pattern.
+    uniqueIndex('media_public_id_unique_idx')
+      .on(table.publicId)
       .where(sql`${table.deletedAt} is null`),
     index('media_wedding_idx').on(table.weddingId),
     index('media_org_idx').on(table.organizationId),

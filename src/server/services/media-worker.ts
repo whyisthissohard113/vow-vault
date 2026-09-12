@@ -275,9 +275,11 @@ async function probeVideoMetadata(mediaRow: MediaRow, storage: StorageClient): P
 // ── Variant helpers ────────────────────────────────────────────────────────────
 
 function buildVariantKey(mediaRow: MediaRow, variantType: string, ext: string): string {
+  // The per-object path segment is the opaque public id (not the internal
+  // UUID) so variant URLs handed to guests never reveal internal ids.
   return (
     `${mediaRow.organizationId}/${mediaRow.weddingId}/` +
-    `${mediaRow.id}.${variantType}.${ext}`
+    `${mediaRow.publicId}.${variantType}.${ext}`
   );
 }
 

@@ -92,9 +92,12 @@ export interface InitiateUploadInput {
 }
 
 export interface InitiateUploadResult {
-  /** Present for new uploads and for staff duplicate responses; absent on
-   *  guest duplicate responses so guests never learn internal media UUIDs. */
+  /** Present for staff uploads; absent on guest responses so guests never
+   *  learn internal media UUIDs. */
   mediaId?: string;
+  /** Opaque 32-char public id for the media row. Guests use this to complete
+   *  their upload and to address the media in public vault routes. */
+  publicId?: string;
   storageKey?: string;
   uploadUrl?: string;
   expiresAt?: string;
@@ -258,6 +261,7 @@ export async function initiateUpload(
       }
       return {
         mediaId: existing.id,
+        publicId: existing.publicId,
         duplicate: true,
         duplicateOf: existing.id,
         message: "A media item with identical content already exists",
@@ -265,13 +269,17 @@ export async function initiateUpload(
     }
   }
 
-  // Server-generated UUID before signing so the storage key is fixed.
+  // Server-generated UUID + opaque public id before signing so the storage
+  // key and guest-facing references are fixed.
   const mediaId = randomUUID();
+  const publicId = randomUUID().replace(/-/g, ""); // 32 hex chars, opaque
   const ext = sanitizeExt(mime);
   const storageKey = buildObjectKey({
     organizationId: ctx.organizationId,
     weddingId: ctx.weddingId,
-    mediaId,
+    // Opaque public id (never the internal UUID): presigned URLs given to
+    // guests must not reveal internal identifiers.
+    objectId: publicId,
     ext,
   });
 
@@ -294,6 +302,7 @@ export async function initiateUpload(
 
   await db.insert(media).values({
     id: mediaId,
+    publicId,
     weddingId: ctx.weddingId,
     organizationId: ctx.organizationId,
     memoryId,
@@ -315,7 +324,10 @@ export async function initiateUpload(
   });
 
   return {
-    mediaId,
+    // Guests reference uploads only by the opaque public id, never the
+    // internal UUID or storage key.
+    mediaId: ctx.origin === "staff" ? mediaId : undefined,
+    publicId,
     storageKey: ctx.origin === "staff" ? storageKey : undefined,
     uploadUrl,
     expiresAt: new Date(Date.now() + UPLOAD_URL_TTL_SECONDS * 1000).toISOString(),
@@ -358,17 +370,69 @@ export async function completeUpload(
   options: CompleteUploadOptions = {},
 ): Promise<{ mediaId: string; status: "processing" }> {
   const mediaRow = await requireMediaOwnership(mediaId, organizationId);
+  await completeUploadRow(mediaRow, options);
+  return { mediaId, status: "processing" };
+}
+
+/**
+ * Guest-path upload completion by opaque public id. The media row is resolved
+ * within the session's organization AND must belong to the session itself
+ * (`guest_session_id`), so one guest can never complete another guest's
+ * upload. Increments the guest fair-use count once after the object is
+ * confirmed (same server-authoritative token check).
+ */
+export async function completeGuestUploadByPublicId(
+  rawToken: string,
+  publicId: string,
+  options: { storage?: StorageClient } = {},
+): Promise<{ status: "processing"; publicId: string }> {
+  const session = await validateGuestSession(rawToken);
+  if (!session) throw new GuestTokenInvalidError();
+
+  const [mediaRow] = await db
+    .select()
+    .from(media)
+    .where(
+      and(
+        eq(media.publicId, publicId),
+        eq(media.organizationId, session.organizationId),
+        eq(media.guestSessionId, session.id),
+        isNull(media.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!mediaRow) throw new NotFoundError("Media");
+
+  await completeUploadRow(mediaRow, {
+    storage: options.storage,
+    guestToken: rawToken,
+  });
+
+  return { status: "processing", publicId };
+}
+
+/**
+ * Shared completion pipeline used by both staff (`completeUpload`) and guest
+ * (`completeGuestUploadByPublicId`) paths. The caller is responsible for
+ * resolving the media row with the correct scoping.
+ */
+async function completeUploadRow(
+  mediaRow: typeof media.$inferSelect,
+  options: CompleteUploadOptions = {},
+): Promise<void> {
+  const { organizationId, id, storageKey, weddingId, contentType } = mediaRow;
   const storage = options.storage ?? createStorageClient();
 
-  // Guest fair-use count is incremented only after the object is confirmed;
-  // reuses the same token validation as creation (server-authoritative).
+  // Guest fair-use count: incrementUploadCount re-validates the raw token
+  // server-side, then bumps the session's counter (server-authoritative).
   if (options.guestToken) {
     await incrementUploadCount(options.guestToken);
   }
 
   let head: ObjectHead;
   try {
-    head = await storage.headObject(mediaRow.storageKey);
+    head = await storage.headObject(storageKey);
   } catch {
     throw new MediaValidationError(
       "Uploaded object was not found in storage; the presigned PUT may not have completed",
@@ -376,25 +440,22 @@ export async function completeUpload(
   }
 
   // Re-enforce package limits against the real stored size.
-  const entitlements = await resolveEntitlementsForWedding(
-    mediaRow.weddingId,
-    mediaRow.organizationId,
-  );
-  const kind: MediaKind = isImageMime(mediaRow.contentType) ? "photo" : "video";
+  const entitlements = await resolveEntitlementsForWedding(weddingId, organizationId);
+  const kind: MediaKind = isImageMime(contentType) ? "photo" : "video";
   enforceSizeLimit(head.size, getUploadLimits(entitlements), kind);
 
   let detected: DetectedSignature | null = null;
   try {
-    const buf = await storage.getObject(mediaRow.storageKey);
+    const buf = await storage.getObject(storageKey);
     detected = detectSignature(buf);
   } catch {
     throw new MediaValidationError("Failed to read the uploaded object for validation");
   }
 
-  if (!detected || !signatureMatchesDetected(detected, mediaRow.contentType)) {
+  if (!detected || !signatureMatchesDetected(detected, contentType)) {
     throw new MediaSignatureRejectedError(
       detected
-        ? `Detected ${detected.mime} while ${mediaRow.contentType} was declared`
+        ? `Detected ${detected.mime} while ${contentType} was declared`
         : "File content could not be identified as a supported media type",
     );
   }
@@ -402,11 +463,9 @@ export async function completeUpload(
   await db
     .update(media)
     .set({ status: "processing", sizeBytes: head.size, updatedAt: new Date() })
-    .where(eq(media.id, mediaId));
+    .where(eq(media.id, id));
 
-  await enqueueProcessingJobs(mediaId, organizationId);
-
-  return { mediaId, status: "processing" };
+  await enqueueProcessingJobs(id, organizationId);
 }
 
 // ── Processing-job maintenance ─────────────────────────────────────────────────
@@ -663,9 +722,9 @@ async function findDuplicateByHash(
   organizationId: string,
   weddingId: string,
   hash: string,
-): Promise<{ id: string; storageKey: string } | null> {
+): Promise<{ id: string; publicId: string; storageKey: string } | null> {
   const [existing] = await db
-    .select({ id: media.id, storageKey: media.storageKey })
+    .select({ id: media.id, publicId: media.publicId, storageKey: media.storageKey })
     .from(media)
     .where(
       and(
