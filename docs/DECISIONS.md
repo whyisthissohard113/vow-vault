@@ -9,3 +9,4 @@ See `docs/decisions/` for material decisions.
 - ADR-006 — Media Storage Pipeline (`docs/decisions/ADR-006-media-storage.md`)
 - ADR-007 — QR Codes & Generated Assets (`docs/decisions/ADR-007-qr-generated-assets.md`)
 - ADR-008 — Dashboard route group + POST /api/weddings CREATE_WEDDING gate (`docs/decisions/ADR-008-dashboard-route-group-and-create-wedding-gate.md`)
+- ADR-009 — Email Worker & Lifecycle Automation (`docs/decisions/ADR-009-email-worker-and-lifecycle-automation.md`)

@@ -13,7 +13,7 @@
 | Media/Storage | COMPLETE | S3/R2 abstraction (SigV4 presigned PUT/GET), media service (MIME+signature+size+entitlement validation, safe keys, sha256 dedupe), async processing worker (thumbnails, variants, content hash), dual-mode staff/guest API, tenant isolation, 47 tests; `media:dev` entrypoint added and worker verified live against MinIO | — |
 | QR/Generated Assets | COMPLETE | QR service (public-URL payloads, opaque publicId, generation/styled/revoke/expire/resolve), card generator (PNG via sharp+SVG), asset generation stubs, 5 API routes, build-engine steps 11+12 wired, 33 tests passing | — |
 | Payments | READY | Next: payments/payment_events tables exist; implement PayFast + webhooks | — |
-| Email/Automation | READY | Next: email_jobs tables exist; implement queuing | — |
+| Email/Automation | COMPLETE | Phase 11: idempotent email queue + worker + SMTP/console providers, 13 templates (XSS-escaped), delivery webhook, JNB lifecycle sweep (upload_closed→expired + reminders), build-engine build_started/build_failure/vault_ready/qr_card hooks, support notifications · migration 0002 (email_job_type 14 values) applied · `email:dev` entrypoint · tsc 0 · lint 0 · 381/381 tests | — |
 | Marketing | READY | — | — |
 | Admin | READY | — | — |
 | QA/Security | READY | — | — |
