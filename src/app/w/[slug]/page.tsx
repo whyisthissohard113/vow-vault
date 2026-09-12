@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 import { notFound } from "next/navigation";
 import Image from "next/image";
 
@@ -8,7 +9,7 @@ import {
 } from "@/server/services/public-vault";
 import { GuestUploadCard } from "./_components/GuestUploadCard";
 import { GalleryGrid } from "./_components/GalleryGrid";
-import { shouldRenderFeature } from "@/lib/entitlements";
+import { EmptyState } from "@/components/ui/empty-state";
 
 /**
  * Public Vault page — `/w/[slug]`.
@@ -89,6 +90,25 @@ export default async function PublicVaultPage({ params }: VaultPageParams) {
 
 // ── Server-side layout ─────────────────────────────────────────────────────────
 
+/**
+ * Inline object for CSS custom properties (theme/accent). Intersection with
+ * React's CSSProperties is required so vendor/custom `--*` tokens type-check.
+ */
+type ThemeGradientStyle = CSSProperties & {
+  "--theme-color": string;
+  "--accent-color": string;
+};
+
+function themeGradientStyle(
+  themeColor: string,
+  accentColor: string,
+): ThemeGradientStyle {
+  return {
+    "--theme-color": themeColor,
+    "--accent-color": accentColor,
+  };
+}
+
 function VaultView({ dto }: { dto: PublicVaultDTO }) {
   const couple =
     [dto.partnerOneName, dto.partnerTwoName].filter(Boolean).join(" & ") ||
@@ -130,7 +150,7 @@ function VaultView({ dto }: { dto: PublicVaultDTO }) {
 
         {/* Intro media (feature-gated) */}
         {dto.intro?.fullUrl ? (
-          <IntroSection dto={dto} couple={couple} />
+          <IntroSection dto={dto} />
         ) : (
           <IntroPlaceholder themeColor={themeColor} accentColor={accentColor} />
         )}
@@ -147,10 +167,10 @@ function VaultView({ dto }: { dto: PublicVaultDTO }) {
         <DeadlineSummary dto={dto} />
 
         {/* Feature gated asset teasers */}
-        <AssetTeasersSection dto={dto} couple={couple} />
+        <AssetTeasersSection dto={dto} />
 
         {/* Gallery */}
-        <GallerySection dto={dto} couple={couple} />
+        <GallerySection dto={dto} />
 
         <footer className="mt-16 text-center text-xs text-zinc-400 dark:text-zinc-600">
           {couple} Wedding Memory Vault
@@ -179,14 +199,14 @@ function BannerSection({
   themeColor: string;
   accentColor: string;
 }) {
-  const hasBanner = dto.banner?.fullUrl ?? false;
+  const bannerUrl = dto.banner?.fullUrl;
 
   return (
     <section className="relative overflow-hidden mb-12">
-      {hasBanner ? (
+      {bannerUrl ? (
         <div className="rounded-2xl overflow-hidden mb-6 shadow-[0_4px_12px_rgba(0,0,0,0.15)] dark:shadow-[0_4px_12px_rgba(0,0,0,0.3)]">
           <Image
-            src={dto.banner.fullUrl}
+            src={bannerUrl}
             alt={`${couple} banner`}
             fill
             unoptimized
@@ -194,7 +214,7 @@ function BannerSection({
             sizes="100vw"
             className="object-cover transition-opacity duration-500 hover:opacity-90 dark:object-cover"
           />
-          {dto.banner.kind === "video" && (
+          {dto.banner?.kind === "video" && (
             <div
               className="absolute bottom-0 left-0 right-0 bg-black/60 p-4 text-white text-sm font-medium"
             >
@@ -205,7 +225,7 @@ function BannerSection({
       ) : (
         <div
           className="rounded-2xl bg-gradient-to-br from-[var(--theme-color)] to-[var(--accent-color)] mb-6"
-          style={{ "--theme-color": themeColor, "--accent-color": accentColor }}
+          style={themeGradientStyle(themeColor, accentColor)}
         >
           <div className="h-64 sm:h-80 p-6 text-center text-white">
             <h2 className="text-2xl font-bold mb-2">Celebrate Love</h2>
@@ -226,12 +246,15 @@ function BannerSection({
  * Intro media section or placeholder.
  */
 function IntroSection({ dto }: { dto: PublicVaultDTO }) {
-  const isVideo = dto.intro?.kind === "video";
+  const intro = dto.intro;
+  if (!intro?.fullUrl) return null;
+
+  const isVideo = intro.kind === "video";
 
   return isVideo ? (
     <section className="mt-8">
       <video
-        src={dto.intro.fullUrl}
+        src={intro.fullUrl}
         controls
         className="mx-auto max-h-[70vh] w-full max-w-3xl rounded-2xl bg-black"
       />
@@ -240,7 +263,7 @@ function IntroSection({ dto }: { dto: PublicVaultDTO }) {
     <section className="mt-8">
       <div className="relative mx-auto h-64 w-full sm:h-80 rounded-2xl overflow-hidden bg-black dark:bg-zinc-800">
         <Image
-          src={dto.intro.fullUrl}
+          src={intro.fullUrl}
           alt="Intro"
           fill
           unoptimized
@@ -263,7 +286,7 @@ function IntroPlaceholder({
   accentColor: string;
 }) {
   return (
-    <section className="mt-8 rounded-2xl bg-gradient-to-br from-[var(--theme-color)] to-[var(--accent-color)] mb-6" style={{ "--theme-color": themeColor, "--accent-color": accentColor }}>
+    <section className="mt-8 rounded-2xl bg-gradient-to-br from-[var(--theme-color)] to-[var(--accent-color)] mb-6" style={themeGradientStyle(themeColor, accentColor)}>
       <div className="h-64 sm:h-80 p-6 flex items-center justify-center text-white">
         <svg
           className="w-12 h-12 opacity-50 mb-2"
@@ -353,7 +376,7 @@ function DeadlineSummary({ dto }: { dto: PublicVaultDTO }) {
  * Gold: Slideshow
  * Platinum: Slideshow + Flipbook
  */
-function AssetTeasersSection({ dto, couple }: { dto: PublicVaultDTO; couple: string }) {
+function AssetTeasersSection({ dto }: { dto: PublicVaultDTO }) {
   return (
     <section className="mt-12 grid gap-4 sm:grid-cols-2">
       {dto.slideshowTitle ? (
@@ -393,7 +416,7 @@ function AssetTeasersSection({ dto, couple }: { dto: PublicVaultDTO; couple: str
 /**
  * Gallery section with empty state handling.
  */
-function GallerySection({ dto, couple }: { dto: PublicVaultDTO; couple: string }) {
+function GallerySection({ dto }: { dto: PublicVaultDTO }) {
   return (
     <section className="mt-12">
       <h2 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50 mb-6">
@@ -409,7 +432,7 @@ function GallerySection({ dto, couple }: { dto: PublicVaultDTO; couple: string }
       {dto.gallery.length === 0 && (
         <EmptyState
           title="No memories shared yet"
-          description="Be the first to upload a photo or video using the QR code below. Guest uploads are open until {dto.uploadDeadlineDisplay}."
+          description={`Be the first to upload a photo or video using the QR code below. Guest uploads are open until ${dto.uploadDeadlineDisplay}.`}
         />
       )}
     </section>
