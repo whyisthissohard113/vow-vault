@@ -13,8 +13,8 @@ import { eq, and, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { weddings, buildJobs } from "@/lib/db/schema";
 import { enqueueBuild } from "@/server/services/build-engine";
-import { requireTenant, validateTenantAccess, type TenantContext } from "@/server/middleware/tenant";
-import { withAuth, withTenant, RouteParams } from "@/server/middleware/auth";
+import { validateTenantAccess, type TenantContext } from "@/server/middleware/tenant";
+import { withAuth, withTenant } from "@/server/middleware/auth";
 import { withPermission, Permission } from "@/server/middleware/auth";
 import { ForbiddenError, NotFoundError } from "@/lib/auth/errors";
 
@@ -26,8 +26,6 @@ const buildRequestSchema = z.object({
   version: z.number().int().positive().optional(),
   templateId: z.string().uuid().optional(),
 }).strict();
-
-type BuildRequest = z.infer<typeof buildRequestSchema>;
 
 // ── Route Handler ──────────────────────────────────────────────────────────────
 

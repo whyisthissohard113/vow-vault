@@ -2,28 +2,35 @@
  * API route: GET /api/build/[id]
  *
  * Get build job status with step details.
+ *
+ * Guards: authenticated + tenant + VIEW_WEDDING. Tenant isolation is enforced
+ * against the job's organization_id.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
 
-import { db } from "@/lib/db";
-import { buildJobs, buildJobSteps } from "@/lib/db/schema";
 import { getBuildStatus } from "@/server/services/build-engine";
-import { requireTenant, validateTenantAccess, type TenantContext } from "@/server/middleware/tenant";
-import { withAuth, withTenant, RouteParams } from "@/server/middleware/auth";
-import { withPermission, Permission } from "@/server/middleware/auth";
+import { type TenantContext, validateTenantAccess } from "@/server/middleware/tenant";
+import {
+  withAuth,
+  withTenant,
+  withPermission,
+  Permission,
+  type RouteParams,
+} from "@/server/middleware/auth";
 import { ForbiddenError, NotFoundError } from "@/lib/auth/errors";
 
-// ── Route Handler ──────────────────────────────────────────────────────────────
-
 async function handleGetBuildStatus(
-  request: NextRequest,
+  _request: NextRequest,
   context: { tenant: TenantContext; params: RouteParams },
 ) {
   try {
-    const { id } = await context.params;
-    const { tenant } = context;
+    const params = await context.params;
+    const id = params.id;
+
+    if (!id || typeof id !== "string") {
+      return NextResponse.json({ error: "Invalid build job id" }, { status: 400 });
+    }
 
     const { job, steps } = await getBuildStatus(id);
 
@@ -31,8 +38,7 @@ async function handleGetBuildStatus(
       return NextResponse.json({ error: "Build job not found" }, { status: 404 });
     }
 
-    // Verify tenant access
-    validateTenantAccess(tenant, job.organizationId);
+    validateTenantAccess(context.tenant, job.organizationId);
 
     return NextResponse.json({
       job: {
@@ -61,17 +67,16 @@ async function handleGetBuildStatus(
     });
   } catch (error) {
     if (error instanceof ForbiddenError || error instanceof NotFoundError) {
-      return NextResponse.json({ error: error.message }, { status: error instanceof NotFoundError ? 404 : 403 });
+      return NextResponse.json(
+        { error: error.message },
+        { status: error instanceof NotFoundError ? 404 : 403 },
+      );
     }
     console.error("[API/build/[id]] Error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-// ── Composed Guards ────────────────────────────────────────────────────────────
-
 export const GET = withAuth(
-  withTenant(
-    withPermission(Permission.VIEW_WEDDING)(handleGetBuildStatus),
-  ),
+  withTenant(withPermission(Permission.VIEW_WEDDING)(handleGetBuildStatus)),
 );

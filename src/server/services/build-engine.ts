@@ -44,6 +44,8 @@ import {
 import { resolveEntitlements, type ResolvedEntitlements } from "@/lib/entitlements";
 import { calculateExpiryDeadlines, type ExpiryDeadlines } from "@/lib/entitlements/expiry";
 import { NotFoundError } from "@/lib/auth/errors";
+import { createQrCode } from "@/server/services/qr-service";
+import { generateQrCardPng } from "@/server/services/qr-card-generator";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -785,55 +787,90 @@ async function stepCreateFlipbook(ctx: BuildContext): Promise<Partial<BuildConte
 }
 
 async function stepGenerateQR(ctx: BuildContext): Promise<Partial<BuildContext>> {
-  const { wedding, organizationId, vault, buildJobId } = ctx;
+  const { wedding, organizationId, vault } = ctx;
 
   if (!vault) throw new Error("Vault not created");
 
-  // Check if QR code already exists
+  // Check if QR code already exists (idempotency)
   const [existing] = await db
     .select()
     .from(qrCodes)
     .where(and(eq(qrCodes.weddingId, wedding.id), isNull(qrCodes.deletedAt)))
     .limit(1);
 
-  let qrCode = existing;
+  let qrCodeId: string;
+  let qrPublicId: string;
+  let qrTargetUrl: string;
 
-  if (!qrCode) {
-    const publicId = generatePublicId();
-    const targetUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://app.weddingmemoryvault.com"}/w/${vault.slug}`;
+  if (existing) {
+    qrCodeId = existing.id;
+    qrPublicId = existing.publicId;
+    qrTargetUrl = existing.targetUrl ?? "";
+  } else {
+    // Use the QR service for generation
+    const result = await createQrCode({
+      weddingId: wedding.id,
+      organizationId,
+      vaultId: vault.id,
+    });
 
-    [qrCode] = await db
-      .insert(qrCodes)
-      .values({
-        weddingId: wedding.id,
-        vaultId: vault.id,
-        organizationId,
-        designId: null, // Use default design
-        publicId,
-        targetUrl,
-        status: "active",
-        generatedAt: new Date(),
-        expiresAt: null, // QR codes don't expire by default
-      })
-      .returning();
+    qrCodeId = result.id;
+    qrPublicId = result.publicId;
+    qrTargetUrl = result.targetUrl;
   }
 
-  return { qrCodeId: qrCode.id, qrPublicId: qrCode.publicId, qrTargetUrl: qrCode.targetUrl ?? undefined, qrGenerated: true };
+  return { qrCodeId, qrPublicId, qrTargetUrl, qrGenerated: true };
 }
 
 async function stepGenerateQRCard(ctx: BuildContext): Promise<Partial<BuildContext>> {
-  const { entitlements, wedding, organizationId } = ctx;
+  const { entitlements, wedding, organizationId, qrCodeId, qrTargetUrl } = ctx;
 
   // Only generate QR design card for Platinum
   if (!entitlementHasFeature(entitlements, "qr_design_card")) {
     return { qrCardGenerated: false, reason: "QR design card not in package" };
   }
 
-  // In a real implementation, this would generate a PDF/PNG card
-  // For now, we record that it was requested
-  // The actual PDF generation would be a separate async job
+  if (!qrCodeId || !qrTargetUrl) {
+    return { qrCardGenerated: false, reason: "No QR code available for card generation" };
+  }
 
-  return { qrCardGenerated: true, qrCardRequested: true };
+  // Generate the QR card PNG using the QR card generator
+  try {
+    const coupleName = `${wedding.partnerOneName ?? "Partner One"} & ${wedding.partnerTwoName ?? "Partner Two"}`;
+    const weddingDateStr = wedding.weddingDate
+      ? new Intl.DateTimeFormat("en-ZA", {
+          timeZone: "Africa/Johannesburg",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }).format(wedding.weddingDate)
+      : undefined;
+
+    const card = await generateQrCardPng({
+      targetUrl: qrTargetUrl,
+      coupleName,
+      weddingDate: weddingDateStr,
+    });
+
+    // Persist lightweight metadata into the accumulated step result. The full
+    // card PNG is regenerable on demand via the QR card generator; embedding
+    // a multi-MB base64 string in build_jobs.result bloats the job row under
+    // every build. Writing directly avoids `result` as a return key:
+    // executeStep merges step returns into ctx.result via Object.assign, and
+    // a nested `result` key self-referenced the accumulator, producing a
+    // circular structure on the final build_jobs.result write.
+    ctx.result.qrCardContentType = card.contentType;
+    ctx.result.qrCardPngSizeBytes = card.pngBuffer.length;
+
+    return {
+      qrCardGenerated: true,
+      qrCardRequested: true,
+    };
+  } catch (error) {
+    console.error("[BuildEngine] QR card generation failed:", error);
+    // Non-fatal: log but don't fail the build
+    return { qrCardGenerated: false, qrCardRequested: true, reason: `QR card generation failed: ${error instanceof Error ? error.message : "unknown"}` };
+  }
 }
 
 async function stepPublishVault(ctx: BuildContext): Promise<Partial<BuildContext>> {

@@ -73,6 +73,16 @@ export class GuestTokenInvalidError extends AuthError {
   code = "guest_token_invalid";
 }
 
+export class RateLimitError extends AuthError {
+  message = "Too many requests; please try again later";
+  code = "rate_limit";
+
+  constructor(message = "Too many requests; please try again later") {
+    super(message);
+    this.message = message;
+  }
+}
+
 // ── Role / Permission Errors ────────────────────────────────────────────────
 
 export class InsufficientPermissionsError extends AuthError {
@@ -138,6 +148,46 @@ export class DuplicateMediaError extends MediaValidationError {
   code = "duplicate_media";
 
   constructor(message = "A media item with identical content already exists") {
+    super(message);
+    this.message = message;
+  }
+}
+
+// ── QR / Generated Assets Errors ───────────────────────────────────────────
+
+export class QrGenerationError extends AuthError {
+  code = "qr_generation";
+  constructor(message = "QR image generation failed") {
+    super(message);
+    this.message = message;
+  }
+}
+
+export class QrCardGenerationError extends AuthError {
+  code = "qr_card_generation";
+  constructor(message = "QR card generation failed") {
+    super(message);
+    this.message = message;
+  }
+}
+
+export class QrCodeNotFoundError extends NotFoundError {
+  constructor(resource = "QR code") {
+    super(resource);
+  }
+}
+
+export class QrCodeRevokedError extends AuthError {
+  code = "qr_code_revoked";
+  constructor(message = "QR code has been revoked") {
+    super(message);
+    this.message = message;
+  }
+}
+
+export class QrCodeExpiredError extends AuthError {
+  code = "qr_code_expired";
+  constructor(message = "QR code has expired") {
     super(message);
     this.message = message;
   }
