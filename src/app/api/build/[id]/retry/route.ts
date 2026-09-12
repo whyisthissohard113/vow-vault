@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { retryBuild } from "@/server/services/build-engine";
 import { getBuildStatus } from "@/server/services/build-engine";
-import { requireTenant, validateTenantAccess, type TenantContext } from "@/server/middleware/tenant";
+import { validateTenantAccess, type TenantContext } from "@/server/middleware/tenant";
 import { withAuth, withTenant, RouteParams } from "@/server/middleware/auth";
 import { withPermission, Permission } from "@/server/middleware/auth";
 import { ForbiddenError, NotFoundError } from "@/lib/auth/errors";

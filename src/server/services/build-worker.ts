@@ -8,7 +8,7 @@
  * This implementation uses database polling as a simple alternative.
  */
 
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { buildJobs, buildJobSteps } from "@/lib/db/schema";
 import { executeBuild, getBuildStatus, retryBuild } from "./build-engine";
@@ -17,7 +17,6 @@ import { executeBuild, getBuildStatus, retryBuild } from "./build-engine";
 
 const POLL_INTERVAL_MS = 5000; // 5 seconds
 const MAX_CONCURRENT_JOBS = 3;
-const STALE_JOB_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
 // ── Worker State ───────────────────────────────────────────────────────────────
 
@@ -129,8 +128,6 @@ async function processPendingJobs(): Promise<void> {
  * Recover jobs that were stuck in "processing" state (e.g., worker crashed).
  */
 async function recoverStaleJobs(): Promise<void> {
-  const staleThreshold = new Date(Date.now() - STALE_JOB_THRESHOLD_MS);
-
   const staleJobs = await db
     .select({ id: buildJobs.id, attempts: buildJobs.attempts, maxAttempts: buildJobs.maxAttempts })
     .from(buildJobs)

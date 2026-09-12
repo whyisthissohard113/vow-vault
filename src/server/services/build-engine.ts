@@ -16,7 +16,6 @@
  */
 
 import { eq, and, isNull, desc } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 
 import { db } from "@/lib/db";
 import {
@@ -25,11 +24,8 @@ import {
   weddings,
   vaults,
   qrCodes,
-  qrDesigns,
   slideshows,
-  slideshowItems,
   flipbooks,
-  flipbookPages,
   expiryRules,
   lifecycleEvents,
   emailJobs,
@@ -37,9 +33,6 @@ import {
   payments,
   products,
   templateVersions,
-  templateFields,
-  media,
-  memories,
 } from "@/lib/db/schema";
 import { resolveEntitlements, type ResolvedEntitlements } from "@/lib/entitlements";
 import { calculateExpiryDeadlines, type ExpiryDeadlines } from "@/lib/entitlements/expiry";
@@ -508,7 +501,7 @@ async function stepValidateWedding(ctx: BuildContext): Promise<Partial<BuildCont
 }
 
 async function stepVerifyPayment(ctx: BuildContext): Promise<Partial<BuildContext>> {
-  const { wedding, organizationId } = ctx;
+  const { organizationId } = ctx;
 
   // Find completed payment for this wedding's order
   const [order] = await db
@@ -549,8 +542,6 @@ async function stepVerifyPayment(ctx: BuildContext): Promise<Partial<BuildContex
 }
 
 async function stepVerifyEntitlement(ctx: BuildContext): Promise<Partial<BuildContext>> {
-  const { entitlements } = ctx;
-
   // Verify the package matches the product
   if (ctx.product.code !== ctx.entitlements.packageCode) {
     throw new Error(`Package mismatch: wedding has ${ctx.product.code}, entitlements resolved to ${ctx.entitlements.packageCode}`);
@@ -564,7 +555,7 @@ async function stepVerifyEntitlement(ctx: BuildContext): Promise<Partial<BuildCo
 }
 
 async function stepCreateVault(ctx: BuildContext): Promise<Partial<BuildContext>> {
-  const { wedding, organizationId, entitlements } = ctx;
+  const { wedding, organizationId } = ctx;
 
   // Check if vault already exists for this wedding
   const [existingVault] = await db
@@ -656,7 +647,7 @@ async function stepConfigurePublicUrl(ctx: BuildContext): Promise<Partial<BuildC
 }
 
 async function stepConfigureExpiry(ctx: BuildContext): Promise<Partial<BuildContext>> {
-  const { wedding, organizationId, expiryDeadlines, product } = ctx;
+  const { wedding, organizationId, expiryDeadlines } = ctx;
 
   if (!expiryDeadlines) throw new Error("Expiry deadlines not calculated");
 
@@ -692,7 +683,7 @@ async function stepCreateGallery(ctx: BuildContext): Promise<Partial<BuildContex
   // Gallery is essentially the vault's media collection
   // It's created implicitly by the vault existing and media being uploaded
   // Here we just mark that the gallery feature is enabled
-  const { vault, entitlements } = ctx;
+  const { entitlements } = ctx;
 
   if (!entitlementHasFeature(entitlements, "photos")) {
     return { galleryCreated: false, reason: "Photos not in package" };
@@ -823,7 +814,7 @@ async function stepGenerateQR(ctx: BuildContext): Promise<Partial<BuildContext>>
 }
 
 async function stepGenerateQRCard(ctx: BuildContext): Promise<Partial<BuildContext>> {
-  const { entitlements, wedding, organizationId, qrCodeId, qrTargetUrl } = ctx;
+  const { entitlements, wedding, qrCodeId, qrTargetUrl } = ctx;
 
   // Only generate QR design card for Platinum
   if (!entitlementHasFeature(entitlements, "qr_design_card")) {
@@ -874,7 +865,7 @@ async function stepGenerateQRCard(ctx: BuildContext): Promise<Partial<BuildConte
 }
 
 async function stepPublishVault(ctx: BuildContext): Promise<Partial<BuildContext>> {
-  const { vault, wedding, organizationId } = ctx;
+  const { vault, wedding } = ctx;
 
   if (!vault) throw new Error("Vault not created");
 

@@ -13,8 +13,8 @@
  * All tests hit the real database. Fixtures use unique prefixed names.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
-import { eq, and, isNull, inArray } from "drizzle-orm";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { eq, inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
@@ -56,11 +56,6 @@ import {
 import {
   generateQrCardPng,
 } from "@/server/services/qr-card-generator";
-
-import {
-  QrCodeNotFoundError,
-  QrGenerationError,
-} from "@/lib/auth/errors";
 
 // ── Test Constants ───────────────────────────────────────────────────────────
 

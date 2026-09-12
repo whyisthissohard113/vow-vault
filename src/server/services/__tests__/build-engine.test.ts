@@ -10,7 +10,7 @@
  * - Error handling
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { eq, and, isNull, inArray, or } from "drizzle-orm";
 
 import { db } from "@/lib/db";
@@ -41,7 +41,6 @@ import {
   BUILD_STEPS,
   MAX_ATTEMPTS,
 } from "@/server/services/build-engine";
-import { resolveEntitlements } from "@/lib/entitlements";
 
 // ── Test Helpers ───────────────────────────────────────────────────────────────
 
