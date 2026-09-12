@@ -73,15 +73,16 @@ async function setupTestData(packageCode: "silver" | "gold" | "platinum" = "gold
     email: "test@example.com",
   }).onConflictDoNothing();
 
-  // Create product
+  // Create product (scoped to the test org so it never collides with a
+  // platform-wide catalog row for the same package code).
   await db.insert(products).values({
     id: TEST_PRODUCT_ID,
     code: packageCode,
     name: packageCode.charAt(0).toUpperCase() + packageCode.slice(1),
     priceCents: packageCode === "silver" ? 59900 : packageCode === "gold" ? 79900 : 109900,
     status: "active",
-    organizationId: null,
-  });
+    organizationId: TEST_ORG_ID,
+  }).onConflictDoNothing();
 
   // Create template
   await db.insert(templates).values({

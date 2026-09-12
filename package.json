@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "worker:dev": "tsx src/server/services/build-worker.entry.ts",
+    "seed:demo": "tsx scripts/seed-demo.ts",
+    "media:dev": "tsx src/server/services/media-worker.entry.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
