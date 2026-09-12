@@ -1,8 +1,14 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 
 import { IconWedding } from "@/components/icons";
 
 export default function Faq() {
+  const [openIndex, setOpenIndex] = useState<number | null>(0);
+  const [submitted, setSubmitted] = useState(false);
+
   const faqs = [
     {
       q: "How much does the Wedding Memory Vault cost?",
@@ -86,30 +92,32 @@ export default function Faq() {
           <dl className="space-y-3">
             {faqs.map((faq, index) => (
               <div key={index} className="rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden">
-                <div
-                  className="p-6 cursor-pointer flex justify-between items-center hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                  onClick={() => {}}
+                <button
+                  type="button"
+                  aria-expanded={openIndex === index}
+                  onClick={() => setOpenIndex(openIndex === index ? null : index)}
+                  className="w-full p-6 cursor-pointer flex justify-between items-center gap-4 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                 >
-                  <span>
-                    <p className="font-medium text-zinc-900 dark:text-zinc-50">
-                      {faq.q}
-                    </p>
-                    <svg
-                      className="h-4 w-4 transition-transform duration-300"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M6 9l6 6 6-6" />
-                    </svg>
-                  </span>
-                </div>
-                <div className="p-6 py-0 text-sm text-zinc-500 dark:text-zinc-400">
-                  {faq.a}
-                </div>
+                  <p className="font-medium text-zinc-900 dark:text-zinc-50">
+                    {faq.q}
+                  </p>
+                  <svg
+                    className={`h-4 w-4 shrink-0 transition-transform duration-300 ${openIndex === index ? "rotate-180" : ""}`}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+                {openIndex === index && (
+                  <div className="px-6 pb-6 text-sm text-zinc-500 dark:text-zinc-400">
+                    {faq.a}
+                  </div>
+                )}
               </div>
             ))}
           </dl>
@@ -126,7 +134,16 @@ export default function Faq() {
             Have another question? We&apos;d love to hear from you. Fill out the form
             below and we&apos;ll get back to you within 2 business days.
           </p>
-          <form className="mt-8 space-y-4" onSubmit={async (e) => e.preventDefault()}>
+          {submitted ? (
+            <div className="mt-8 rounded-2xl border border-zinc-700 bg-zinc-800 px-6 py-8">
+              <p className="text-lg font-semibold text-white">Thanks for reaching out!</p>
+              <p className="mt-2 text-sm text-zinc-300">
+                We&apos;ve received your message and will get back to you within
+                2 business days.
+              </p>
+            </div>
+          ) : (
+          <form className="mt-8 space-y-4" onSubmit={(e) => { e.preventDefault(); setSubmitted(true); }}>
             <div>
               <label className="block text-sm font-medium text-zinc-400 dark:text-zinc-50 mb-2">
                 Name
@@ -171,6 +188,7 @@ export default function Faq() {
               </svg>
             </button>
           </form>
+          )}
         </div>
       </section>
 
