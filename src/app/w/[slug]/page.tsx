@@ -73,10 +73,10 @@ export default async function PublicVaultPage({ params }: VaultPageParams) {
     return (
       <main className="flex flex-1 items-center justify-center px-6 py-24">
         <div className="max-w-md text-center">
-          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-2xl font-semibold text-stone-900">
             {data.title}
           </h1>
-          <p className="mt-3 text-zinc-600 dark:text-zinc-400">
+          <p className="mt-3 text-stone-600">
             This wedding vault has been archived. The collection is no longer
             accepting new memories or sharing content.
           </p>
@@ -119,7 +119,7 @@ function VaultView({ dto }: { dto: PublicVaultDTO }) {
   const accentColor = dto.accentColor ?? "#D4AF37";
 
   return (
-    <main className="flex flex-1 flex-col bg-zinc-50 dark:bg-zinc-950 min-h-screen">
+    <main className="flex min-h-screen flex-1 flex-col bg-background">
       {/* Premium banner section */}
       <BannerSection
         dto={dto}
@@ -130,19 +130,19 @@ function VaultView({ dto }: { dto: PublicVaultDTO }) {
 
       <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-10 sm:px-6">
         <header className="text-center mb-8">
-          <h1 className="text-4xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 sm:text-5xl">
+          <h1 className="text-4xl font-display font-semibold tracking-tight text-stone-900 sm:text-5xl">
             {couple}
           </h1>
-          <p className="mt-3 text-lg text-zinc-600 dark:text-zinc-400">
+          <p className="mt-3 text-lg text-stone-600">
             {dto.weddingDateDisplayJNB}
           </p>
           {dto.customMessage ? (
-            <p className="mx-auto mt-6 max-w-2xl text-zinc-700 dark:text-zinc-300">
+            <p className="mx-auto mt-6 max-w-2xl text-stone-700">
               {dto.customMessage}
             </p>
           ) : null}
           {dto.coupleStory ? (
-            <p className="mx-auto mt-3 max-w-2xl text-zinc-600 dark:text-zinc-400">
+            <p className="mx-auto mt-3 max-w-2xl text-stone-600">
               {dto.coupleStory}
             </p>
           ) : null}
@@ -172,7 +172,7 @@ function VaultView({ dto }: { dto: PublicVaultDTO }) {
         {/* Gallery */}
         <GallerySection dto={dto} />
 
-        <footer className="mt-16 text-center text-xs text-zinc-400 dark:text-zinc-600">
+        <footer className="mt-16 text-center text-xs text-stone-400">
           {couple} Wedding Memory Vault
         </footer>
       </div>
@@ -204,7 +204,7 @@ function BannerSection({
   return (
     <section className="relative overflow-hidden mb-12">
       {bannerUrl ? (
-        <div className="rounded-2xl overflow-hidden mb-6 shadow-[0_4px_12px_rgba(0,0,0,0.15)] dark:shadow-[0_4px_12px_rgba(0,0,0,0.3)]">
+        <div className="rounded-2xl mb-6 overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
           <Image
             src={bannerUrl}
             alt={`${couple} banner`}
@@ -212,7 +212,7 @@ function BannerSection({
             unoptimized
             priority
             sizes="100vw"
-            className="object-cover transition-opacity duration-500 hover:opacity-90 dark:object-cover"
+            className="object-cover transition-opacity duration-500 hover:opacity-90"
           />
           {dto.banner?.kind === "video" && (
             <div
@@ -236,7 +236,7 @@ function BannerSection({
 
       {/* Banner overlay decorations */}
       <div
-        className="absolute top-0 right-0 w-64 h-64 bg-[var(--accent-color)] rotate-6 opacity-20 rounded-full overflow-hidden dark:opacity-30"
+        className="absolute top-0 right-0 h-64 w-64 rotate-6 overflow-hidden rounded-full bg-[var(--accent-color)] opacity-20"
       />
     </section>
   );
@@ -261,14 +261,14 @@ function IntroSection({ dto }: { dto: PublicVaultDTO }) {
     </section>
   ) : (
     <section className="mt-8">
-      <div className="relative mx-auto h-64 w-full sm:h-80 rounded-2xl overflow-hidden bg-black dark:bg-zinc-800">
+      <div className="relative mx-auto h-64 w-full sm:h-80 rounded-2xl overflow-hidden bg-black">
         <Image
           src={intro.fullUrl}
           alt="Intro"
           fill
           unoptimized
           sizes="(min-width: 768px) 48rem, 100vw"
-          className="object-cover transition-opacity duration-500 hover:opacity-90 dark:object-cover"
+          className="object-cover transition-opacity duration-500 hover:opacity-90"
         />
       </div>
     </section>
@@ -317,19 +317,19 @@ function QROverlaySection({
 }) {
   return (
     <section className="mt-12 grid gap-6 md:grid-cols-2 pb-8">
-      <div className="flex flex-col items-center justify-center rounded-2xl border border-zinc-200 p-8 text-center dark:border-zinc-800 shadow-sm transition-all duration-300 hover:border-accent">
+      <div className="flex flex-col items-center justify-center rounded-2xl border border-stone-200 p-8 text-center shadow-sm transition-all duration-300 hover:border-gold/50">
         <Image
           src={dto.qrImageDataUrl}
           alt={`QR code for ${couple} vault`}
           width={180}
           height={180}
           unoptimized
-          className="h-48 w-48 mb-4 object-contain ring-2 ring-zinc-100 dark:ring-zinc-900"
+          className="h-48 w-48 mb-4 object-contain ring-2 ring-stone-100"
         />
-        <h3 className="text-xl font-medium text-zinc-900 dark:text-zinc-100 mb-2">
+        <h3 className="text-xl font-medium text-stone-900 mb-2">
           Share Your Memories
         </h3>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-stone-500">
           Guests open this vault on their phone to upload photos
         </p>
       </div>
@@ -340,11 +340,11 @@ function QROverlaySection({
           uploadDeadlineDisplay={uploadDeadlineDisplay}
         />
       ) : (
-        <div className="rounded-2xl border border-zinc-200 p-8 text-center dark:border-zinc-800">
-          <p className="text-lg font-medium text-zinc-800 dark:text-zinc-200">
+        <div className="rounded-2xl border border-stone-200 p-8 text-center">
+          <p className="text-lg font-medium text-stone-800">
             Uploads are closed
           </p>
-          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-2 text-sm text-stone-500">
             Guest uploads closed on {uploadDeadlineDisplay}. Thank you
             for the memories already shared.
           </p>
@@ -359,11 +359,11 @@ function QROverlaySection({
  */
 function DeadlineSummary({ dto }: { dto: PublicVaultDTO }) {
   return (
-    <section className="mt-8 flex flex-wrap items-center justify-center gap-4 text-sm text-zinc-600 dark:text-zinc-400">
-      <span className="rounded-full bg-zinc-100 px-4 py-1.5 dark:bg-zinc-800">
+    <section className="mt-8 flex flex-wrap items-center justify-center gap-4 text-sm text-stone-600">
+      <span className="rounded-full bg-sand px-4 py-1.5">
         Uploads close {dto.uploadDeadlineDisplay}
       </span>
-      <span className="rounded-full bg-zinc-100 px-4 py-1.5 dark:bg-zinc-800">
+      <span className="rounded-full bg-sand px-4 py-1.5">
         Downloads close {dto.downloadDeadlineDisplay}
       </span>
     </section>
@@ -381,30 +381,30 @@ function AssetTeasersSection({ dto }: { dto: PublicVaultDTO }) {
     <section className="mt-12 grid gap-4 sm:grid-cols-2">
       {dto.slideshowTitle ? (
         <div
-          className="rounded-2xl border border-zinc-200 p-6 dark:border-zinc-800 shadow-sm transition-all duration-300 hover:border-accent"
+          className="rounded-2xl border border-stone-200 p-6 shadow-sm transition-all duration-300 hover:border-gold/50"
         >
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-1">
+          <h2 className="text-lg font-semibold text-stone-900 mb-1">
             Slideshow
           </h2>
-          <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+          <p className="mt-1 text-stone-600">
             {dto.slideshowTitle}
           </p>
-          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-2 text-sm text-stone-500">
             Auto-playing gallery of guest photos
           </p>
         </div>
       ) : null}
       {dto.flipbookTitle ? (
         <div
-          className="rounded-2xl border border-zinc-200 p-6 dark:border-zinc-800 shadow-sm transition-all duration-300 hover:border-accent"
+          className="rounded-2xl border border-stone-200 p-6 shadow-sm transition-all duration-300 hover:border-gold/50"
         >
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-1">
+          <h2 className="text-lg font-semibold text-stone-900 mb-1">
             Flipbook
           </h2>
-          <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+          <p className="mt-1 text-stone-600">
             {dto.flipbookTitle}
           </p>
-          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-2 text-sm text-stone-500">
             Interactive page-flip photo album
           </p>
         </div>
@@ -419,7 +419,7 @@ function AssetTeasersSection({ dto }: { dto: PublicVaultDTO }) {
 function GallerySection({ dto }: { dto: PublicVaultDTO }) {
   return (
     <section className="mt-12">
-      <h2 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50 mb-6">
+      <h2 className="text-2xl font-display font-semibold text-stone-900 mb-6">
         Memories
       </h2>
 

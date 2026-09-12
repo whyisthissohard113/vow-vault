@@ -68,14 +68,11 @@ export function RegisterForm({ hasCompanyNameField = false }: RegisterFormProps)
   if (registered) {
     return (
       <p
-        className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+        className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700"
         role="status"
       >
         Account created!{" "}
-        <Link
-          href="/login"
-          className="font-medium text-emerald-800 underline dark:text-emerald-200"
-        >
+        <Link href="/login" className="font-semibold text-emerald-800 underline">
           Sign in
         </Link>{" "}
         to continue.
@@ -136,7 +133,7 @@ export function RegisterForm({ hasCompanyNameField = false }: RegisterFormProps)
       </div>
 
       {error ? (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+        <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </p>
       ) : null}
@@ -145,12 +142,9 @@ export function RegisterForm({ hasCompanyNameField = false }: RegisterFormProps)
         {pending ? "Creating account…" : "Create account"}
       </Button>
 
-      <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-center text-sm text-stone-500">
         Already have an account?{" "}
-        <Link
-          href="/login"
-          className="font-medium text-zinc-900 hover:underline dark:text-zinc-100"
-        >
+        <Link href="/login" className="font-semibold text-rose-brand hover:underline">
           Sign in
         </Link>
       </p>

@@ -1,180 +1,144 @@
 import Link from "next/link";
 
-import { PACKAGE_METADATA } from "@/lib/entitlements/packages";
+import { SiteHeader } from "@/components/marketing/site-header";
+import { SiteFooter } from "@/components/marketing/site-footer";
+import { IconArrowRight, IconCheck } from "@/components/icons";
+import {
+  PACKAGE_METADATA,
+  packageHasUnlimited,
+  getPackageFairUseLimit,
+} from "@/lib/entitlements/packages";
 import { formatCurrency } from "@/lib/format";
-import { IconWedding } from "@/components/icons";
+import { cn } from "@/lib/utils";
+
+const DETAILS: Record<string, { vault: string; upload: string; download: string }> = {
+  silver: {
+    vault: "Photo gallery · guest uploads · names & date · optional colours",
+    upload: "2 days after the wedding",
+    download: "7 days after the wedding",
+  },
+  gold: {
+    vault: "Silver + video · slideshow · custom banner · unlimited photos",
+    upload: "7 days after the wedding",
+    download: "30 days after the wedding",
+  },
+  platinum: {
+    vault: "Gold + intro · flipbook · QR design cards · extended download",
+    upload: "7 days after the wedding",
+    download: "90 days after the wedding",
+  },
+};
 
 export default function Pricing() {
   return (
-    <div className="flex flex-1 bg-zinc-50 dark:bg-zinc-950 min-h-screen">
-      {/* Header */}
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-6 sm:px-6">
-        <div className="flex items-center gap-2">
-          <IconWedding className="h-7 w-7 text-zinc-500" />
-          <span className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Wedding Memory Vault
-          </span>
-        </div>
-        <nav className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="rounded-lg px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900"
-          >
-            Home
-          </Link>
-          <Link
-            href="/about"
-            className="rounded-lg px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900"
-          >
-            About
-          </Link>
-        </nav>
-      </header>
+    <div className="flex min-h-screen flex-col bg-background">
+      <SiteHeader />
 
-      {/* Hero */}
-      <section className="mx-auto w-full max-w-6xl px-4 pb-24 pt-16 sm:px-6 sm:pt-20">
+      <section className="container-page py-16 sm:py-20">
         <div className="mx-auto max-w-3xl text-center">
-          <h1 className="text-5xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 sm:text-6xl">
+          <p className="text-xs font-semibold uppercase tracking-widest text-rose-brand">The price</p>
+          <h1 className="mt-3 font-display text-4xl font-semibold tracking-tight text-stone-900 sm:text-5xl">
             Choose your package
           </h1>
-          <p className="mx-auto mt-6 text-lg text-zinc-600 dark:text-zinc-400">
-            One-time packages per wedding, in South African Rand. All packages include
-            our premium vault experience with guest uploads and QR cards.
+          <p className="mx-auto mt-5 text-lg text-stone-600">
+            One-time packages per wedding, in South African Rand. All prices include
+            our vault experience with guest uploads and QR codes.
           </p>
         </div>
-      </section>
 
-      {/* Package Comparison */}
-      <section className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 mb-10">
-            Package comparison
-          </h2>
-          <div className="grid gap-6 sm:grid-cols-2">
-            {PACKAGE_METADATA.map((pkg) => (
+        <div className="mt-14 grid gap-6 md:grid-cols-3 lg:items-stretch">
+          {PACKAGE_METADATA.map((pkg) => {
+            const featured = pkg.code === "gold";
+            const details = DETAILS[pkg.code];
+            const unlimited = packageHasUnlimited(pkg.code, "photos");
+            const photoLimit = getPackageFairUseLimit(pkg.code, "photos");
+            return (
               <div
                 key={pkg.code}
-                className="rounded-2xl border border-zinc-300 bg-white p-8 dark:border-zinc-700 dark:bg-zinc-900 shadow-sm transition-all duration-300 hover:border-zinc-600"
+                className={cn(
+                  "relative flex flex-col rounded-3xl p-8",
+                  featured
+                    ? "bg-stone-900 text-white shadow-xl ring-4 ring-rose-brand/30"
+                    : "card-soft bg-white",
+                )}
               >
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-                    {pkg.name}
-                  </h3>
-                  <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                    {pkg.priceCents / 100}{" "}{pkg.currency}
+                {featured ? (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-rose-brand px-4 py-1 text-xs font-semibold uppercase tracking-wider text-white">
+                    Most popular
                   </span>
-                </div>
+                ) : null}
 
-                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-8">
+                <h2 className={cn("font-display text-xl font-semibold", featured ? "text-white" : "text-stone-900")}>
+                  {pkg.name}
+                </h2>
+                <p className={cn("mt-2 text-sm leading-relaxed", featured ? "text-stone-300" : "text-stone-600")}>
                   {pkg.description}
                 </p>
 
-                <dl className="space-y-4">
+                <p className="mt-6 flex items-baseline gap-2">
+                  <span className={cn("font-display text-4xl font-semibold", featured ? "text-white" : "text-stone-900")}>
+                    {formatCurrency(pkg.priceCents, pkg.currency)}
+                  </span>
+                  <span className={cn("text-sm", featured ? "text-stone-400" : "text-stone-500")}>once</span>
+                </p>
+
+                <dl className={cn("mt-8 space-y-5 border-t pt-6", featured ? "border-stone-700" : "border-stone-100")}>
                   <div>
-                    <dt className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
-                      Vault features
+                    <dt className={cn("text-xs font-semibold uppercase tracking-wider", featured ? "text-stone-400" : "text-stone-400")}>
+                      What&apos;s included
                     </dt>
-                    <dd className="text-sm text-zinc-500 dark:text-zinc-400">
-                      {pkg.code === "platinum"
-                        ? "Silver + Gold + intro + flipbook + QR design cards + extended download (90 days)"
-                        : pkg.code === "gold"
-                          ? "Silver + video + slideshow + banner + unlimited photos"
-                          : "Photo gallery + guest uploads + names & date + optional colours"}
+                    <dd className={cn("mt-2 text-sm leading-relaxed", featured ? "text-stone-300" : "text-stone-600")}>
+                      {details.vault}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
-                      Upload limit
+                    <dt className={cn("text-xs font-semibold uppercase tracking-wider", featured ? "text-stone-400" : "text-stone-400")}>
+                      Photos
                     </dt>
-                    <dd className="text-sm text-zinc-500 dark:text-zinc-400">
-                      {-1 === -1 ? "Unlimited" : "500 photos"} {(pkg.code === "gold" || pkg.code === "platinum") ? "+ videos included" : ""}
+                    <dd className={cn("mt-2 text-sm", featured ? "text-stone-300" : "text-stone-600")}>
+                      {unlimited ? "Unlimited (fair use)" : `Up to ${photoLimit}`}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
-                      Download window
+                    <dt className={cn("text-xs font-semibold uppercase tracking-wider", featured ? "text-stone-400" : "text-stone-400")}>
+                      Uploads stay open
                     </dt>
-                    <dd className="text-sm text-zinc-500 dark:text-zinc-400">
-                      {(pkg.code === "platinum" ? "90 days" : pkg.code === "gold" ? "30 days" : "7 days")} after wedding date
-                    </dd>
+                    <dd className={cn("mt-2 text-sm", featured ? "text-stone-300" : "text-stone-600")}>{details.upload}</dd>
+                  </div>
+                  <div>
+                    <dt className={cn("text-xs font-semibold uppercase tracking-wider", featured ? "text-stone-400" : "text-stone-400")}>
+                      Downloads stay open
+                    </dt>
+                    <dd className={cn("mt-2 text-sm", featured ? "text-stone-300" : "text-stone-600")}>{details.download}</dd>
                   </div>
                 </dl>
 
-                <div className="mt-8 pt-8 border-t border-zinc-100 dark:border-zinc-900">
-                  <h4 className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
-                    One-time charge (per wedding)
-                  </h4>
-                  <p className="mt-1 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-                    {formatCurrency(pkg.priceCents, pkg.currency)}
-                  </p>
-                </div>
-
-                <div className="mt-6">
+                <div className="mt-auto pt-8">
                   <Link
                     href={pkg.code === "platinum" ? "/examples/platinum" : pkg.code === "gold" ? "/examples/gold" : "/examples/silver"}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-zinc-300 px-4 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    className={cn(
+                      "inline-flex h-11 w-full items-center justify-center gap-2 rounded-full text-sm font-semibold transition-all",
+                      featured
+                        ? "bg-rose-brand text-white hover:bg-rose-500"
+                        : "border border-stone-300 text-stone-700 hover:border-stone-900 hover:bg-stone-900 hover:text-white",
+                    )}
                   >
-                    View example
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M5 12h14" />
-                      <path d="m12 5 7 7-7 7" />
-                    </svg>
+                    View {pkg.name} example
+                    <IconArrowRight className="h-4 w-4" />
                   </Link>
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
+
+        <p className="mt-10 flex items-center justify-center gap-2 text-sm text-stone-500">
+          <IconCheck className="h-4 w-4 text-rose-brand" />
+          Every package includes a private vault, QR code and guest uploads.
+        </p>
       </section>
 
-      {/* CTA */}
-      <section className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 bg-zinc-900 dark:bg-zinc-950">
-        <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-4xl font-semibold tracking-tight text-white mb-4">
-            Start sharing memories today
-          </h2>
-          <p className="mx-auto mt-4 text-lg text-zinc-400 dark:text-zinc-50 max-w-xl">
-            Create a private gallery for a couple&apos;s photos and videos. Let guests share
-            their moments straight from the celebration with QR cards.
-          </p>
-          <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              href="/register"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-zinc-900 px-6 text-sm font-medium text-white transition-opacity hover:opacity-90 dark:bg-zinc-50 dark:text-zinc-900"
-            >
-              Create account
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
-            </Link>
-            <Link
-              href="#packages"
-              className="inline-flex h-12 items-center justify-center rounded-lg border border-zinc-300 px-6 text-sm font-medium text-zinc-300 transition-colors hover:bg-white dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              View packages
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-zinc-200 dark:border-zinc-800">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-4 py-8 sm:flex-row sm:px-6">
-          <div className="flex items-center gap-2">
-            <IconWedding className="h-5 w-5 text-zinc-400" />
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">
-              Wedding Memory Vault
-            </span>
-          </div>
-          <p className="text-xs text-zinc-400">
-            Built for wedding companies and the couples they serve.
-          </p>
-          <p className="text-xs text-zinc-400 dark:text-zinc-600">
-            {new Date().getFullYear()}
-          </p>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

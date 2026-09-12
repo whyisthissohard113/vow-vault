@@ -15,10 +15,10 @@ export default async function RegisterPage() {
 
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+      <h1 className="font-display text-2xl font-semibold tracking-tight text-stone-900">
         Create your account
       </h1>
-      <p className="mt-1 mb-6 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="mt-1 mb-6 text-sm text-stone-500">
         Start building beautiful wedding memory vaults.
       </p>
       <RegisterForm />

@@ -180,11 +180,11 @@ export function GuestUploadCard({ slug, uploadDeadlineDisplay }: GuestUploadCard
   );
 
   return (
-    <div className="rounded-2xl border border-zinc-200 p-8 dark:border-zinc-800">
-      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+    <div className="rounded-2xl border border-stone-200 bg-white p-8">
+      <h2 className="text-lg font-display font-semibold text-stone-900">
         Share your memories
       </h2>
-      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="mt-1 text-sm text-stone-500">
         Guest uploads close on {uploadDeadlineDisplay}
       </p>
 
@@ -192,7 +192,7 @@ export function GuestUploadCard({ slug, uploadDeadlineDisplay }: GuestUploadCard
         <div className="mt-6">
           <label
             htmlFor="guest-name"
-            className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
+            className="text-sm font-medium text-stone-700"
           >
             Your name (optional)
           </label>
@@ -203,18 +203,18 @@ export function GuestUploadCard({ slug, uploadDeadlineDisplay }: GuestUploadCard
             onChange={(event) => setName(event.target.value)}
             maxLength={120}
             placeholder="e.g. The Smith family"
-            className="mt-2 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+            className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none focus:border-rose-brand"
           />
           <button
             type="button"
             onClick={startSession}
             disabled={phase === "session"}
-            className="mt-4 w-full rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900"
+            className="mt-4 w-full rounded-full bg-rose-brand px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-rose-500 disabled:opacity-50"
           >
             {phase === "session" ? "Starting…" : "Start sharing"}
           </button>
           {sessionLimit ? (
-            <p className="mt-2 text-center text-xs text-zinc-500 dark:text-zinc-400">
+            <p className="mt-2 text-center text-xs text-stone-500">
               {sessionLimit} per session
             </p>
           ) : null}
@@ -223,9 +223,9 @@ export function GuestUploadCard({ slug, uploadDeadlineDisplay }: GuestUploadCard
         <div className="mt-6">
           <label
             htmlFor="guest-file"
-            className="flex w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-300 px-4 py-8 text-center text-sm text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400"
+            className="flex w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-stone-300 px-4 py-8 text-center text-sm text-stone-600 hover:border-gold/60"
           >
-            <span className="text-base font-medium text-zinc-800 dark:text-zinc-200">
+            <span className="text-base font-medium text-stone-800">
               {phase === "uploading" && progress > 0 && progress < 100
                 ? `Uploading ${fileName}… ${progress}%`
                 : phase === "completing"
@@ -248,9 +248,9 @@ export function GuestUploadCard({ slug, uploadDeadlineDisplay }: GuestUploadCard
           </label>
 
           {phase === "uploading" && progress > 0 && progress < 100 ? (
-            <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+            <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-sand">
               <div
-                className="h-full rounded-full bg-zinc-900 transition-[width] duration-200 dark:bg-zinc-50"
+                className="h-full rounded-full bg-rose-brand transition-[width] duration-200"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -259,9 +259,7 @@ export function GuestUploadCard({ slug, uploadDeadlineDisplay }: GuestUploadCard
           {message ? (
             <p
               className={`mt-4 text-center text-sm ${
-                phase === "error"
-                  ? "text-red-600 dark:text-red-400"
-                  : "text-zinc-600 dark:text-zinc-400"
+                phase === "error" ? "text-red-600" : "text-stone-600"
               }`}
             >
               {message}

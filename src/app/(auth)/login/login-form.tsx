@@ -38,7 +38,7 @@ export function LoginForm() {
       </div>
 
       {state?.error ? (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+        <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
           {state.error}
         </p>
       ) : null}
@@ -47,12 +47,9 @@ export function LoginForm() {
         {pending ? "Signing in…" : "Sign in"}
       </Button>
 
-      <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-center text-sm text-stone-500">
         Don&apos;t have an account?{" "}
-        <Link
-          href="/register"
-          className="font-medium text-zinc-900 hover:underline dark:text-zinc-100"
-        >
+        <Link href="/register" className="font-semibold text-rose-brand hover:underline">
           Create one
         </Link>
       </p>

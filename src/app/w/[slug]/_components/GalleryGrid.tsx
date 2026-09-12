@@ -50,7 +50,7 @@ export function GalleryGrid({ slug, items, downloadOpen }: GalleryGridProps) {
 
   if (items.length === 0) {
     return (
-      <p className="py-8 text-center text-zinc-500 dark:text-zinc-400">
+      <p className="py-8 text-center text-stone-500">
         No memories have been shared yet.
       </p>
     );
@@ -66,7 +66,7 @@ export function GalleryGrid({ slug, items, downloadOpen }: GalleryGridProps) {
             key={item.publicId}
             type="button"
             onClick={() => setSelected(index)}
-            className="group relative aspect-square overflow-hidden rounded-xl bg-zinc-100 text-left dark:bg-zinc-800"
+            className="group relative aspect-square overflow-hidden rounded-xl bg-sand text-left"
             aria-label={`View ${item.filename}`}
           >
             {item.thumbnailUrl ?? item.fullUrl ? (
@@ -79,7 +79,7 @@ export function GalleryGrid({ slug, items, downloadOpen }: GalleryGridProps) {
                 className="object-cover transition-transform duration-300 group-hover:scale-105"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-xs text-zinc-400">
+              <div className="flex h-full w-full items-center justify-center text-xs text-stone-400">
                 Preview
               </div>
             )}
@@ -123,18 +123,18 @@ export function GalleryGrid({ slug, items, downloadOpen }: GalleryGridProps) {
                 />
               </div>
             ) : (
-              <p className="text-center text-zinc-300">Preview not available</p>
+              <p className="text-center text-stone-300">Preview not available</p>
             )}
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <span className="min-w-0 flex-1 truncate text-sm text-zinc-300">
+              <span className="min-w-0 flex-1 truncate text-sm text-stone-300">
                 {selectedItem.filename}
               </span>
               {downloadOpen ? (
                 <button
                   type="button"
                   onClick={() => download(selectedItem)}
-                  className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-opacity hover:opacity-90"
+                  className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-stone-900 transition-opacity hover:opacity-90"
                 >
                   Download
                 </button>
@@ -142,7 +142,7 @@ export function GalleryGrid({ slug, items, downloadOpen }: GalleryGridProps) {
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
+                className="rounded-full border border-stone-600 px-4 py-2 text-sm text-stone-200 transition-colors hover:bg-stone-700"
               >
                 Close
               </button>

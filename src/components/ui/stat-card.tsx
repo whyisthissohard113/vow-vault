@@ -14,23 +14,23 @@ export function StatCard({ label, value, hint, icon, className }: StatCardProps)
   return (
     <div
       className={cn(
-        "rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900",
+        "card-soft bg-white p-5",
         className,
       )}
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm font-medium text-stone-500">
           {label}
         </p>
         {icon ? (
-          <span className="text-zinc-400 dark:text-zinc-500">{icon}</span>
+          <span className="text-stone-400">{icon}</span>
         ) : null}
       </div>
-      <p className="mt-2 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+      <p className="mt-2 text-2xl font-semibold text-stone-900">
         {value}
       </p>
       {hint ? (
-        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{hint}</p>
+        <p className="mt-1 text-xs text-stone-500">{hint}</p>
       ) : null}
     </div>
   );

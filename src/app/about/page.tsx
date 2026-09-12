@@ -1,44 +1,65 @@
 import Link from "next/link";
 
-import { IconWedding } from "@/components/icons";
+import { SiteHeader } from "@/components/marketing/site-header";
+import { SiteFooter } from "@/components/marketing/site-footer";
+import {
+  IconArrowRight,
+  IconCamera,
+  IconLock,
+  IconQr,
+  IconSparkle,
+  IconUsers,
+} from "@/components/icons";
+
+const STEPS = [
+  {
+    title: "Create the vault",
+    body: "Set up a private gallery styled for the couple in minutes — names, date, banner, colours.",
+    icon: IconSparkle,
+  },
+  {
+    title: "Guests upload",
+    body: "Guests scan the QR card at the venue and upload photos and videos straight from their phones.",
+    icon: IconQr,
+  },
+  {
+    title: "Share & enjoy",
+    body: "Everyone browses the shared memories, downloads their favourites and relives the day.",
+    icon: IconCamera,
+  },
+];
+
+const FEATURES = [
+  {
+    title: "A private vault",
+    body: "One private gallery for the couple's photos and videos, styled to match their day.",
+    icon: IconLock,
+  },
+  {
+    title: "Guest moments",
+    body: "Guests upload into one safe place, with upload windows that close after the honeymoon.",
+    icon: IconUsers,
+  },
+  {
+    title: "QR cards",
+    body: "Platinum design cards guests scan at the venue. Gold and Silver include standard QR codes.",
+    icon: IconQr,
+  },
+];
 
 export default function About() {
   return (
-    <div className="flex flex-1 bg-zinc-50 dark:bg-zinc-950 min-h-screen">
-      {/* Header */}
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-6 sm:px-6">
-        <div className="flex items-center gap-2">
-          <IconWedding className="h-7 w-7 text-zinc-500" />
-          <span className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Wedding Memory Vault
-          </span>
-        </div>
-        <nav className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="rounded-lg px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900"
-          >
-            Home
-          </Link>
-          <Link
-            href="/pricing"
-            className="rounded-lg px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900"
-          >
-            Pricing
-          </Link>
-        </nav>
-      </header>
+    <div className="flex min-h-screen flex-col bg-background">
+      <SiteHeader />
 
-      {/* Hero */}
-      <section className="mx-auto w-full max-w-6xl px-4 pb-24 pt-16 sm:px-6 sm:pt-20">
+      <section className="container-page py-16 sm:py-20">
         <div className="mx-auto max-w-2xl text-center">
-          <h1 className="text-5xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 sm:text-6xl">
+          <p className="text-xs font-semibold uppercase tracking-widest text-rose-brand">About</p>
+          <h1 className="mt-3 font-display text-4xl font-semibold tracking-tight text-stone-900 sm:text-5xl">
             A premium platform for
+            <span className="block text-rose-brand">wedding memories</span>
           </h1>
-          <h1 className="text-5xl font-semibold tracking-tight text-rose-500 sm:text-6xl">
-            wedding memories
-          </h1>
-          <p className="mx-auto mt-6 max-w-xl text-lg text-zinc-600 dark:text-zinc-400">
+          <p className="mx-auto mt-5 text-lg text-stone-600">
             Create a private, elegantly designed gallery for a couple&apos;s photos and videos.
             Let guests share their own moments straight from the celebration, and hand
             out QR cards that open the vault instantly.
@@ -46,17 +67,14 @@ export default function About() {
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
               href="/pricing"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-zinc-900 px-6 text-sm font-medium text-white transition-opacity hover:opacity-90 dark:bg-zinc-50 dark:text-zinc-900"
+              className="btn-primary h-12"
             >
-              View packages
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
+              <span>View packages</span>
+              <IconArrowRight className="h-4 w-4" />
             </Link>
             <Link
               href="#features"
-              className="inline-flex h-12 items-center justify-center rounded-lg border border-zinc-300 px-6 text-sm font-medium text-zinc-600 transition-colors hover:bg-white dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+              className="inline-flex h-12 items-center justify-center rounded-full border border-stone-300 px-6 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-900 hover:text-white"
             >
               Learn more
             </Link>
@@ -64,129 +82,69 @@ export default function About() {
         </div>
       </section>
 
-      {/* How It Works */}
-      <section id="features" className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
-        <div className="mx-auto max-w-3xl text-center">
-          <h2 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 mb-6">
-            How it works
-          </h2>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl p-6 border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="h-12 w-12 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
-                <svg className="h-6 w-6 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 3v2l7 8 7-8v2H3z" />
-                  <path d="M3 9v6c3 5 9 8 9 8v1h-2v-5.586a1 1 0 0 0-.293-.724l-7-4a1 1 0 0 0-.795-.408H3z" />
-                  <line x1="3" y1="3" x2="21" y2="3" />
-                  <line x1="3" y1="11" x2="21" y2="11" />
-                  <line x1="3" y1="18" x2="21" y2="18" />
-                </svg>
+      {/* How it works */}
+      <section id="features" className="bg-sand/60 py-16 sm:py-20">
+        <div className="container-page">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-xs font-semibold uppercase tracking-widest text-rose-brand">How it works</p>
+            <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight text-stone-900">
+              Three steps to a full album
+            </h2>
+          </div>
+          <div className="mt-12 grid gap-6 md:grid-cols-3">
+            {STEPS.map((step, i) => (
+              <div key={step.title} className="card-soft bg-white p-8">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-soft text-rose-brand">
+                  <step.icon className="h-6 w-6" />
+                </div>
+                <p className="mt-5 text-xs font-bold uppercase tracking-widest text-stone-400">
+                  Step {i + 1}
+                </p>
+                <h3 className="mt-1 font-display text-lg font-semibold text-stone-900">{step.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-stone-600">{step.body}</p>
               </div>
-              <h3 className="text-xl font-medium text-zinc-900 dark:text-zinc-500 mb-2">Create a vault</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                Set up a private gallery for the couple&apos;s photos and videos in minutes.
-              </p>
-            </div>
-            <div className="rounded-2xl p-6 border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="h-12 w-12 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
-                <svg className="h-6 w-6 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="12 6 12 12 16 14" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-medium text-zinc-900 dark:text-zinc-500 mb-2">Guests upload</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                Guests scan QR cards at the venue and upload photos and videos directly
-                to the vault from their phones.
-              </p>
-            </div>
-            <div className="rounded-2xl p-6 border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="h-12 w-12 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
-                <svg className="h-6 w-6 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <path d="m17 8-5-5-5 5" />
-                  <path d="M12 3v12" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-medium text-zinc-900 dark:text-zinc-500 mb-2">Share & enjoy</h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                Guests browse the shared memories, download what they want, and keep
-                the wedding magic alive forever.
-              </p>
-            </div>
+            ))}
           </div>
         </div>
       </section>
 
       {/* Features */}
-      <section className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
-        <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-16 sm:grid-cols-3 sm:px-6">
-          <div className="rounded-2xl p-6">
-            <svg className="h-8 w-8 text-zinc-500 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="9" rx="1.5" />
-              <rect x="14" y="3" width="7" height="5" rx="1.5" />
-              <rect x="14" y="12" width="7" height="9" rx="1.5" />
-              <rect x="3" y="16" width="7" height="5" rx="1.5" />
-            </svg>
-            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Personal vault</h2>
-            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-              A private gallery for the couple&apos;s photos and videos, styled to match
-              their day — from banner to intro.
-            </p>
-          </div>
-          <div className="rounded-2xl p-6">
-            <svg className="h-8 w-8 text-zinc-500 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Guest moments</h2>
-            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-              Guests upload their photos and videos to one safe place, with upload
-              windows that close when the honeymoon is over.
-            </p>
-          </div>
-          <div className="rounded-2xl p-6">
-            <svg className="h-8 w-8 text-zinc-500 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1" />
-              <rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" />
-              <path d="M14 14h3v3h-3z" />
-              <path d="M21 14h.01" />
-              <path d="M14 21h.01" />
-              <path d="M21 17v4h-4" />
-            </svg>
-            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">QR cards</h2>
-            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-              Platinum design cards guests scan at the venue to open the vault and
-              start sharing. Gold and Silver include standard QR codes.
-            </p>
-          </div>
+      <section className="container-page py-16 sm:py-20">
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="text-xs font-semibold uppercase tracking-widest text-rose-brand">What&apos;s inside</p>
+          <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight text-stone-900">
+            Built for wedding companies and the couples they serve
+          </h2>
+        </div>
+        <div className="mt-12 grid gap-6 md:grid-cols-3">
+          {FEATURES.map((feature) => (
+            <div key={feature.title} className="card-soft border border-stone-200/70 bg-white p-8">
+              <feature.icon className="h-8 w-8 text-rose-brand" />
+              <h3 className="mt-4 font-display text-lg font-semibold text-stone-900">{feature.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-stone-600">{feature.body}</p>
+            </div>
+          ))}
         </div>
       </section>
 
       {/* CTA */}
-      <section className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 bg-zinc-900 dark:bg-zinc-950">
-        <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-4xl font-semibold tracking-tight text-white mb-4">
+      <section className="container-page pb-20">
+        <div className="rounded-3xl bg-stone-900 px-8 py-16 text-center sm:px-16">
+          <h2 className="font-display text-3xl font-semibold tracking-tight text-white sm:text-4xl">
             Ready to start sharing memories?
           </h2>
-          <p className="mx-auto mt-4 text-lg text-zinc-400 dark:text-zinc-50 max-w-xl">
+          <p className="mx-auto mt-4 max-w-xl text-lg text-stone-300">
             Create your first vault in under five minutes. No credit card required
             to get started.
           </p>
-          <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              href="/pricing"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-zinc-900 px-6 text-sm font-medium text-white transition-opacity hover:opacity-90 dark:bg-zinc-50 dark:text-zinc-900"
-            >
-              See pricing plans
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <Link href="/pricing" className="btn-primary h-12">
+              <span>See pricing plans</span>
+              <IconArrowRight className="h-4 w-4" />
             </Link>
             <Link
               href="/register"
-              className="inline-flex h-12 items-center justify-center rounded-lg border border-zinc-300 px-6 text-sm font-medium text-zinc-300 transition-colors hover:bg-white dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              className="inline-flex h-12 items-center justify-center rounded-full border border-stone-600 px-6 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-stone-900"
             >
               Create account
             </Link>
@@ -194,23 +152,7 @@ export default function About() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-zinc-200 dark:border-zinc-800">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-4 py-8 sm:flex-row sm:px-6">
-          <div className="flex items-center gap-2">
-            <IconWedding className="h-5 w-5 text-zinc-400" />
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">
-              Wedding Memory Vault
-            </span>
-          </div>
-          <p className="text-xs text-zinc-400">
-            Built for wedding companies and the couples they serve.
-          </p>
-          <p className="text-xs text-zinc-400 dark:text-zinc-600">
-            {new Date().getFullYear()}
-          </p>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

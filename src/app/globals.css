@@ -1,26 +1,73 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #faf7f2;
+  --foreground: #211a16;
+  --surface: #ffffff;
+  --sand: #f4eee5;
+  --ink: #211a16;
+  --rose-brand: #e11d48;
+  --rose-soft: #fff1f2;
+  --gold: #c8934a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-sand: var(--sand);
+  --color-ink: var(--ink);
+  --color-rose-brand: var(--rose-brand);
+  --color-rose-soft: var(--rose-soft);
+  --color-gold: var(--gold);
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-fraunces);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #fecdd3;
+  color: #881337;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Warm, editorial section rhythm */
+.container-page {
+  @apply mx-auto w-full max-w-6xl px-5 sm:px-8;
+}
+
+/* Soft polaroid-style photo placeholder used across marketing pages */
+.polaroid {
+  @apply rounded-xl bg-white p-3 shadow-[0_2px_20px_rgba(33,26,22,0.12)] ring-1 ring-black/5;
+}
+
+.polaroid-caption {
+  @apply mt-3 text-center font-display text-sm tracking-wide text-stone-600;
+}
+
+/* Consistent card surface */
+.card-soft {
+  @apply rounded-2xl border border-stone-200/80 bg-surface shadow-[0_1px_3px_rgba(33,26,22,0.06)];
+}
+
+/* Primary CTA — warm rose */
+.btn-primary {
+  @apply inline-flex h-12 items-center justify-center gap-2 rounded-full bg-rose-brand px-7 text-sm font-semibold text-white transition-all hover:bg-stone-900 hover:shadow-lg;
+}
+
+.btn-secondary {
+  @apply inline-flex h-12 items-center justify-center gap-2 rounded-full border border-stone-300 bg-transparent px-7 text-sm font-semibold text-stone-700 transition-colors hover:border-stone-400 hover:bg-white;
 }

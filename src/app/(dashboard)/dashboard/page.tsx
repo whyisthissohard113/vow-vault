@@ -38,10 +38,10 @@ export default async function DashboardPage() {
 
       <Card>
         <CardContent className="flex items-center justify-between gap-3">
-          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+          <p className="text-sm font-medium text-stone-900">
             Media uploaded this month
           </p>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-stone-500">
             {overview.mediaCountThisMonth} items
           </p>
         </CardContent>
@@ -49,12 +49,12 @@ export default async function DashboardPage() {
 
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+          <h2 className="font-display text-lg font-semibold text-stone-900">
             Expiring soon
           </h2>
           <Link
             href="/dashboard/weddings"
-            className="text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            className="text-sm font-medium text-rose-brand hover:underline"
           >
             View all →
           </Link>
@@ -63,27 +63,27 @@ export default async function DashboardPage() {
         {overview.expiringSoon.length === 0 ? (
           <Card>
             <CardContent>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              <p className="text-sm text-stone-500">
                 No vaults are within 30 days of their download deadline.
               </p>
             </CardContent>
           </Card>
         ) : (
           <Card>
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            <div className="divide-y divide-stone-100">
               {overview.expiringSoon.map((wedding) => (
                 <Link
                   key={wedding.weddingId}
                   href={`/dashboard/weddings/${wedding.weddingId}`}
-                  className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
+                  className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 transition-colors hover:bg-sand"
                 >
                   <div>
-                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                    <p className="text-sm font-medium text-stone-900">
                       {wedding.partnerOne && wedding.partnerTwo
                         ? `${wedding.partnerOne} & ${wedding.partnerTwo}`
                         : "Unnamed wedding"}
                     </p>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    <p className="text-xs text-stone-500">
                       {wedding.packageCode} · download closes{" "}
                       {formatDate(wedding.downloadDeadline)}
                     </p>
