@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "worker:dev": "tsx src/server/services/build-worker.entry.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -40,6 +41,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5",
     "vitest": "^3.2.7"
   }
