@@ -10,3 +10,4 @@ See `docs/decisions/` for material decisions.
 - ADR-007 — QR Codes & Generated Assets (`docs/decisions/ADR-007-qr-generated-assets.md`)
 - ADR-008 — Dashboard route group + POST /api/weddings CREATE_WEDDING gate (`docs/decisions/ADR-008-dashboard-route-group-and-create-wedding-gate.md`)
 - ADR-009 — Email Worker & Lifecycle Automation (`docs/decisions/ADR-009-email-worker-and-lifecycle-automation.md`)
+- ADR-010 — Platform Admin Console (Backend) (`docs/decisions/ADR-010-platform-admin-console-backend.md`)

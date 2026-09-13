@@ -2,7 +2,7 @@
 
 | Worker | Status | Current Task | Blocker |
 |---|---|---|---|
-| Orchestrator | COMPLETE | Demo seed + guests e2e proven: `npm run seed:demo` (demo@weddingmemoryvault.app), MinIO up, media worker entry added, guest upload → process → gallery → download verified live · tsc 0 · lint 0 · 334/334 tests | — |
+| Orchestrator | COMPLETE | Phase 12a Platform Admin backend shipped: service (2625 ln) + 27 API routes + route helpers + 104-test suite (ADR-010) · 4 count-query search bugs fixed · full suite now 485/485 · tsc 0 · lint 0 | — |
 | Architect | READY | — | — |
 | Database | COMPLETE | PostgreSQL + Drizzle schema (37 tables), migration `0000_shiny_the_santerians.sql` applied & verified | — |
 | Auth/RBAC/Tenancy | COMPLETE | NextAuth v5 + RBAC (8 roles, 15 permissions) + tenant isolation + guest sessions + auth guards + 99 tests passing | — |
@@ -15,6 +15,6 @@
 | Payments | READY | Next: payments/payment_events tables exist; implement PayFast + webhooks | — |
 | Email/Automation | COMPLETE | Phase 11: idempotent email queue + worker + SMTP/console providers, 13 templates (XSS-escaped), delivery webhook, JNB lifecycle sweep (upload_closed→expired + reminders), build-engine build_started/build_failure/vault_ready/qr_card hooks, support notifications · migration 0002 (email_job_type 14 values) applied · `email:dev` entrypoint · tsc 0 · lint 0 · 381/381 tests | — |
 | Marketing | READY | — | — |
-| Admin | READY | — | — |
+| Admin | COMPLETE | Platform admin backend (ADR-010): 2625-line admin-service + 27 guarded API routes + route helpers · reads VIEW_PLATFORM_ANALYTICS / writes MANAGE_PLATFORM · audit-every-mutation + safe no-op protocol · 104 integration tests (UUID family 55555555, lifecycle-inert fixtures) · 4 count-query search bugs fixed by orchestrator · full suite 485/485 · tsc 0 · lint 0 | — |
 | QA/Security | READY | — | — |
 | DevOps | READY | Next: CI/CD, migrations on deploy, backups | — |
