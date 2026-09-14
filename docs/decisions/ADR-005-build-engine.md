@@ -62,6 +62,13 @@ Two uniqueness constraints on `build_jobs`:
 - `build_job_steps` tracks each step: status, timing, error message, metadata
 - API provides `GET /api/build/[id]` with full step details
 
+### Status writes superseded by ADR-011 (Phase 13 lifecycle engine)
+Since ADR-011, the build engine no longer writes `weddings.status` directly.
+- `validate_wedding` → `transitionWeddingStatus(draft → building)` (no-op on rebuild/retry).
+- `create_vault` → `transitionWeddingStatus(building → active)`; the engine maps this to the `build_completed` lifecycle event.
+- `publish_vault` → `transitionWeddingStatus(building → active, eventType: "build_completed")` (CAS no-ops on already-active weddings; a wedding past `active` is never regressed).
+- `audit_event` → audit_logs `action: "build_completed"` only; lifecycle events are written by the engine. Rebuilds where the CAS is skipped record metadata `{ skippedActiveTransition: true, currentStatus }`.
+
 ## Consequences
 
 ### Positive

@@ -42,6 +42,9 @@ enqueueable idempotently from payment flows and the build engine.
   CAS status transitions (`active` → `upload_closed` → `expired`), and enqueues
   each notification type under per-wedding deadline idempotency keys so replays
   are no-ops. Emails are only sent to vaults that still have a customer contact.
+  Superseded by ADR-011: transitions now belong to the shared lifecycle engine
+  (`runLifecycleSweep`), and the sweep's `download_closed` email fires at
+  `upload_closed → download_only`.
 - **Worker entrypoint** `npm run email:dev` runs `email-worker.entry.ts`;
   lifecycle scanning runs every 12 polls inside the same loop.
 
