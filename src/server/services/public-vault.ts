@@ -47,6 +47,10 @@ import {
   type DownloadVariant,
   type SignedDownloadResult,
 } from "@/server/services/media-service";
+import {
+  GUEST_UPLOAD_ALLOWED_WEDDING_STATUSES,
+  GUEST_DOWNLOAD_ALLOWED_WEDDING_STATUSES,
+} from "@/server/lifecycle/policy";
 import { isImageMime, isVideoMime } from "@/server/services/storage/mime";
 import type { StorageClient } from "@/server/services/storage/client";
 
@@ -564,11 +568,17 @@ export async function createVaultGuestSession(
   slug: string,
   input: CreateVaultGuestSessionInput = {},
 ): Promise<GuestSessionResult> {
-  const { vault, entitlements } = await resolvePublishedVault(slug);
+  const { vault, wedding, entitlements } = await resolvePublishedVault(slug);
 
-  // Guest uploads must be both entitled and inside the upload window.
+  // Guest uploads must be inside the upload window (deadline-derived) AND the
+  // explicit status belt-and-braces (policy `GUEST_UPLOAD_ALLOWED_WEDDING_STATUSES`)
+  // must still admit the wedding — a mis-set status never re-opens uploads.
   if (!entitlements.uploadOpen) {
     throw new ForbiddenError("Upload window has closed");
+  }
+
+  if (!GUEST_UPLOAD_ALLOWED_WEDDING_STATUSES.includes(wedding.status)) {
+    throw new ForbiddenError("Uploads are not open for this wedding");
   }
 
   if (input.ipAddress) {
@@ -623,10 +633,17 @@ export async function getGuestDownloadUrlForPublicMedia(
     storage?: StorageClient;
   } = {},
 ): Promise<SignedDownloadResult> {
-  const { vault, entitlements } = await resolvePublishedVault(vaultSlug);
+  const { vault, wedding, entitlements } = await resolvePublishedVault(vaultSlug);
 
   if (!entitlements.downloadOpen) {
     throw new ForbiddenError("Download window has closed");
+  }
+
+  // Explicit status belt-and-braces (policy
+  // `GUEST_DOWNLOAD_ALLOWED_WEDDING_STATUSES`): a mis-set status never
+  // re-opens downloads after the lifecycle engine has closed them.
+  if (!GUEST_DOWNLOAD_ALLOWED_WEDDING_STATUSES.includes(wedding.status)) {
+    throw new ForbiddenError("Downloads are not open for this wedding");
   }
 
   const [mediaRow] = await db

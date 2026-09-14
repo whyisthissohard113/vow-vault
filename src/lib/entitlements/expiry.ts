@@ -223,8 +223,14 @@ export function isDownloadOpen(downloadDeadline: Date, now: Date = new Date()): 
  * Logic:
  * - active: now < uploadDeadline (both windows open)
  * - upload_closed: uploadDeadline <= now < downloadDeadline (uploads closed, downloads open)
- * - expired: now >= downloadDeadline (both closed)
- * Note: downloadOnly status is not used in current spec (download_only = upload_closed in practice)
+ * - download_only: now >= downloadDeadline (both closed; deadline-derived tail)
+ *
+ * Contract (Phase 13, ADR-001/ADR-011): the deadline-derived status is
+ * `download_only` once the download window closes — `expired` is NOT emitted
+ * directly from deadlines. Per the machine, `expired` is only ever reached
+ * after `download_only` + the retention grace (see
+ * `EVENT_TICK_SCHEDULE`/`transitionWeddingStatus` in the lifecycle engine), so
+ * a pure deadline check must not short-circuit to the post-grace status.
  */
 export function getLifecycleStatusFromDeadlines(
   uploadDeadline: Date,
@@ -233,7 +239,7 @@ export function getLifecycleStatusFromDeadlines(
 ): "active" | "upload_closed" | "download_only" | "expired" {
   if (now < uploadDeadline) return "active";
   if (now < downloadDeadline) return "upload_closed";
-  return "expired";
+  return "download_only";
 }
 
 /**

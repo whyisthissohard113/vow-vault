@@ -204,10 +204,10 @@ describe("resolveEntitlements", () => {
       expect(entitlements.downloadOpen).toBe(true);
     });
 
-    it("is 'expired' after download window", () => {
+    it("is 'download_only' after download window", () => {
       const afterDownload = new Date("2025-12-25T10:00:00.000Z"); // After +7 days
       const entitlements = resolveEntitlements({ ...silverBase, now: afterDownload });
-      expect(entitlements.lifecycleStatus).toBe("expired");
+      expect(entitlements.lifecycleStatus).toBe("download_only");
       expect(entitlements.uploadOpen).toBe(false);
       expect(entitlements.downloadOpen).toBe(false);
     });

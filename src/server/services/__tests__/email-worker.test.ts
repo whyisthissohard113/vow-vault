@@ -603,14 +603,14 @@ describe("lifecycle automation sweep", () => {
     const phaseBRepeat = await scanLifecycleAutomation(new Date("2026-07-20T09:00:00.000Z"));
     expect(phaseBRepeat.emailsEnqueued).toBe(0);
 
-    // Phase C: download deadline passed → expired + download_closed email.
+    // Phase C: download deadline passed → download_only + download_closed email.
     const phaseC = await scanLifecycleAutomation(new Date("2026-07-20T11:00:00.000Z"));
     expect(phaseC.statusTransitions).toBe(1);
     expect(phaseC.emailsEnqueued).toBe(1);
 
-    // Final state: expired, no more scans match.
+    // Final state: download_only (the expired/archived tail is grace-driven).
     const [wedding] = await db.select().from(weddings).where(eq(weddings.id, WED_E)).limit(1);
-    expect(wedding.status).toBe("expired");
+    expect(wedding.status).toBe("download_only");
 
     // One job per trigger, no duplicates across the whole life of the wedding.
     expect(await countEmailJobs(ORG_BILLING, "upload_closed")).toBe(1);
@@ -624,7 +624,7 @@ describe("lifecycle automation sweep", () => {
     const events = await db.select().from(lifecycleEvents).where(eq(lifecycleEvents.weddingId, WED_E));
     expect(events).toHaveLength(2);
     expect(events.some((e) => e.eventType === "upload_deadline_reached" && e.fromStatus === "active" && e.toStatus === "upload_closed")).toBe(true);
-    expect(events.some((e) => e.eventType === "download_deadline_reached" && e.fromStatus === "upload_closed" && e.toStatus === "expired")).toBe(true);
+    expect(events.some((e) => e.eventType === "download_deadline_reached" && e.fromStatus === "upload_closed" && e.toStatus === "download_only")).toBe(true);
 
     // Customer-facing emails go to the resolved customer email, never a placeholder.
     const uploadClosedJobs = await db

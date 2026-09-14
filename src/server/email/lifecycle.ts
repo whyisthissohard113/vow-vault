@@ -1,29 +1,37 @@
 /**
- * Lifecycle automation sweep.
+ * Lifecycle automation sweep (Phase 13).
  *
- * `scanLifecycleAutomation` is an idempotent sweep — safe to run repeatedly and
- * concurrently with the email worker. For every ACTIVE / UPLOAD_CLOSED wedding
- * with an `expiry_rules` row it:
+ * `scanLifecycleAutomation` is the email/automation complement to the shared
+ * lifecycle engine (`src/server/lifecycle/engine.ts`). It is idempotent — safe
+ * to run repeatedly and concurrently with the email worker. The engine's
+ * `runLifecycleSweep` is the SINGLE mutation point for wedding status
+ * transitions (DRAFT → BUILDING → ACTIVE → UPLOAD_CLOSED → DOWNLOAD_ONLY →
+ * EXPIRED → ARCHIVED → DELETION_PENDING → DELETED). This module:
  *
- *  - transitions status (active → upload_closed → expired) at the exclusive
- *    deadlines, writing audit logs + lifecycle events,
- *  - enqueues the reminder / warning / closed emails through `enqueueEmail`
- *    with deterministic idempotency keys, so repeated sweeps can never create
- *    a second job.
+ *  1. runs the engine sweep FIRST and mirrors guest-facing transitions into
+ *     `upload_closed` / `download_closed` emails under deterministic
+ *     per-wedding deadline idempotency keys,
+ *  2. then enqueues the four lead-based reminder/warning emails for weddings
+ *     whose CURRENT status is still `active` or `upload_closed` AFTER the
+ *     sweep — so reminders never fire for download_only/expired/archived/
+ *     deletion_pending/deleted weddings.
  *
- * Business dates use `Africa/Johannesburg`: "now" and every deadline are
- * truncated to the JNB calendar day (UTC instants of the JNB day boundary)
- * before comparison, while stored timestamps remain UTC (see ADR-001).
+ * Guest sessions are revoked by the engine at DOWNLOAD_ONLY; this module
+ * never duplicates that.
+ *
+ * Business dates use `Africa/Johannesburg`: "now" and every reminder lead
+ * window are truncated to the JNB calendar day (UTC instants of the JNB day
+ * boundary) before comparison, while stored timestamps remain UTC (see
+ * ADR-001). Deadline comparisons are exclusive-end: `now >= deadline` is
+ * closed, and the instant of the deadline itself IS closed (never `>`).
  */
 
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
-  auditLogs,
   customers,
   expiryRules,
-  lifecycleEvents,
   vaults,
   weddings,
   type Wedding,
@@ -33,6 +41,7 @@ import {
 import { enqueueEmail } from "@/server/email/queue";
 import { appUrl, type EmailTemplateData } from "@/server/email/templates";
 import { EMAIL_LIFECYCLE_LEAD_DAYS, MS_PER_DAY } from "@/server/email/constants";
+import { runLifecycleSweep, type SweepTransition } from "@/server/lifecycle/engine";
 
 export const BUSINESS_TIMEZONE = "Africa/Johannesburg";
 
@@ -81,15 +90,43 @@ interface WeddingContact {
 // ── Public sweep ───────────────────────────────────────────────────────────────
 
 /**
- * Runs one lifecycle sweep. Idempotent: enqueues use `onConflictDoNothing`
- * idempotency keys and status transitions are guarded by CAS updates, so
- * repeated runs never duplicate emails, events or transitions.
+ * Runs one lifecycle sweep. Idempotent: the engine sweep is CAS-guarded (only
+ * one concurrent sweep lands a transition) and email enqueues use
+ * `onConflictDoNothing` idempotency keys, so repeated runs never duplicate
+ * events, emails or transitions.
  *
  * @param now  reference instant (defaults to the current time, UTC)
  */
 export async function scanLifecycleAutomation(
   now: Date = new Date(),
 ): Promise<LifecycleScanResult> {
+  // 1. Transitions: the engine sweep is the single mutation point.
+  const sweep = await runLifecycleSweep(now);
+
+  // 2. Mirror the guest-facing transitions into emails. Only transitions that
+  // open a new guest-facing phase send mail (upload_closed, download_only);
+  // the retention tail (expired → archived → deletion_pending → deleted) is
+  // silent for customers.
+  let emails = 0;
+  for (const transition of sweep.statusTransitions) {
+    if (transition.toStatus === "upload_closed") {
+      emails += await enqueueTransitionEmail(
+        transition,
+        "upload_closed",
+        `upload_closed_${transition.weddingId}_${transition.uploadDeadline}`,
+      );
+    } else if (transition.toStatus === "download_only") {
+      emails += await enqueueTransitionEmail(
+        transition,
+        "download_closed",
+        `download_closed_${transition.weddingId}_${transition.downloadDeadline}`,
+      );
+    }
+  }
+
+  // 3. Lead-based reminder emails for weddings still inside the guest-facing
+  // window after the sweep. Statuses the sweep just advanced (e.g. to
+  // download_only) are no longer matched, so their reminders can never fire.
   const rows = await db
     .select({
       wedding: weddings,
@@ -101,65 +138,68 @@ export async function scanLifecycleAutomation(
     .leftJoin(vaults, and(eq(vaults.weddingId, weddings.id), isNull(vaults.deletedAt)))
     .where(and(inArray(weddings.status, ["active", "upload_closed"]), isNull(weddings.deletedAt)));
 
-  let transitions = 0;
-  let emails = 0;
-
   for (const row of rows) {
-    const outcome = await processWedding(row, now);
-    transitions += outcome.transitions;
-    emails += outcome.emailsEnqueued;
+    emails += await enqueueReminderEmails(row, now);
   }
 
-  return { weddingsScanned: rows.length, statusTransitions: transitions, emailsEnqueued: emails };
+  return {
+    weddingsScanned: sweep.weddingsScanned,
+    statusTransitions: sweep.statusTransitions.length,
+    emailsEnqueued: emails,
+  };
 }
 
-// ── Per-wedding processing ─────────────────────────────────────────────────────
+// ── Transition emails (from the engine sweep) ──────────────────────────────────
 
-async function processWedding(
+/**
+ * Loads a transitioned wedding (with its live vault + customer contact) and
+ * enqueues the guest-facing "closed" email. No-ops when the wedding or its
+ * customer contact is missing; the deterministic idempotency key keeps
+ * concurrent replays from double-enqueueing.
+ */
+async function enqueueTransitionEmail(
+  transition: SweepTransition,
+  emailType: "upload_closed" | "download_closed",
+  idempotencyKey: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ wedding: weddings, vault: vaults })
+    .from(weddings)
+    .leftJoin(vaults, and(eq(vaults.weddingId, weddings.id), isNull(vaults.deletedAt)))
+    .where(eq(weddings.id, transition.weddingId))
+    .limit(1);
+  if (!row) return 0;
+
+  const contact = await getWeddingContact(row.wedding.id);
+  if (!contact) {
+    console.warn(
+      `[Lifecycle] Wedding ${row.wedding.id} has no customer contact; skipping ${emailType} email`,
+    );
+    return 0;
+  }
+
+  return queueTransitionEmail(contact, row.wedding, emailType, idempotencyKey, {
+    ...baseEmailData(row.wedding, row.vault, contact),
+    uploadDeadline: transition.uploadDeadline,
+    downloadDeadline: transition.downloadDeadline,
+  });
+}
+
+// ── Lead-based reminder emails (after the sweep has converged statuses) ────────
+
+async function enqueueReminderEmails(
   { wedding, rule, vault }: WeddingWithRule,
   now: Date,
-): Promise<{ transitions: number; emailsEnqueued: number }> {
-  let transitions = 0;
-  let emails = 0;
-  let status = wedding.status;
-
+): Promise<number> {
   const contact = await getWeddingContact(wedding.id);
   if (!contact) {
-    console.warn(`[Lifecycle] Wedding ${wedding.id} has no customer contact; skipping lifecycle emails`);
+    console.warn(`[Lifecycle] Wedding ${wedding.id} has no customer contact; skipping reminder emails`);
+    return 0;
   }
-  const base = contact ? baseEmailData(wedding, vault, contact) : {};
+  let emails = 0;
+  const base = baseEmailData(wedding, vault, contact);
   const uploadDeadlineIso = rule.uploadDeadline.toISOString();
   const downloadDeadlineIso = rule.downloadDeadline.toISOString();
-
-  // Status transitions first so email conditions see the converged state.
-  if (status === "active" && now >= rule.uploadDeadline) {
-    const ok = await transitionWedding(wedding, "active", "upload_closed", "Upload deadline reached", now);
-    if (ok) {
-      transitions += 1;
-      status = "upload_closed";
-      emails += await queueTransitionEmail(contact, wedding, "upload_closed", `upload_closed_${wedding.id}_${uploadDeadlineIso}`, {
-        ...base,
-        downloadDeadline: downloadDeadlineIso,
-        uploadDeadline: uploadDeadlineIso,
-      });
-    }
-  }
-
-  if (status !== "expired" && now >= rule.downloadDeadline) {
-    const ok = await transitionWedding(wedding, status, "expired", "Download deadline reached", now);
-    if (ok) {
-      transitions += 1;
-      status = "expired";
-      emails += await queueTransitionEmail(contact, wedding, "download_closed", `download_closed_${wedding.id}_${downloadDeadlineIso}`, {
-        ...base,
-        downloadDeadline: downloadDeadlineIso,
-        uploadDeadline: uploadDeadlineIso,
-      });
-    }
-  }
-
-  if (status === "expired" || !contact) return { transitions, emailsEnqueued: emails };
-
   const nowJNB = jnbDayStart(now);
 
   const uploadExpiryWarningStart = jnbDayStart(
@@ -173,7 +213,7 @@ async function processWedding(
   );
 
   // reminder_upload: the wedding date has been reached and uploads are open.
-  if (status === "active" && wedding.weddingDate && nowJNB >= jnbDayStart(wedding.weddingDate) && now < rule.uploadDeadline) {
+  if (wedding.status === "active" && wedding.weddingDate && nowJNB >= jnbDayStart(wedding.weddingDate) && now < rule.uploadDeadline) {
     const key = `reminder_upload_${wedding.id}_${toDateOnlyString(wedding.weddingDate)}`;
     if (await queueIfAbsent(contact, wedding, "reminder_upload", key, {
       ...base,
@@ -183,8 +223,8 @@ async function processWedding(
     })) emails += 1;
   }
 
-  // download_expiry_warning: uploads close in 3 days.
-  if (status === "active" && now >= downloadExpiryWarningStart && now < rule.uploadDeadline) {
+  // download_expiry_warning: uploads close in 3 days (active uploads only).
+  if (wedding.status === "active" && now >= downloadExpiryWarningStart && now < rule.uploadDeadline) {
     const key = `download_expiry_warning_${wedding.id}_${uploadDeadlineIso}`;
     if (await queueIfAbsent(contact, wedding, "download_expiry_warning", key, {
       ...base,
@@ -194,7 +234,7 @@ async function processWedding(
   }
 
   // download_reminder: uploads are closed, downloads close within 7 days.
-  if (now >= rule.uploadDeadline && now < rule.downloadDeadline && now >= downloadReminderStart) {
+  if (wedding.status === "upload_closed" && now >= downloadReminderStart && now < rule.downloadDeadline) {
     const key = `download_reminder_${wedding.id}_${uploadDeadlineIso}`;
     if (await queueIfAbsent(contact, wedding, "download_reminder", key, {
       ...base,
@@ -203,7 +243,9 @@ async function processWedding(
     })) emails += 1;
   }
 
-  // upload_expiry_warning: downloads close within 7 days.
+  // upload_expiry_warning: downloads close within 7 days. The reminder query
+  // already restricts this to active/upload_closed, so download_only and the
+  // retention tail never match here.
   if (now >= uploadExpiryWarningStart && now < rule.downloadDeadline) {
     const key = `upload_expiry_warning_${wedding.id}_${downloadDeadlineIso}`;
     if (await queueIfAbsent(contact, wedding, "upload_expiry_warning", key, {
@@ -213,54 +255,10 @@ async function processWedding(
     })) emails += 1;
   }
 
-  return { transitions, emailsEnqueued: emails };
+  return emails;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-
-/**
- * CAS-guarded status transition. Only transitions when the current DB status
- * still matches `fromStatus` (prevents duplicate lifecycle events and audit
- * rows under concurrent sweeps).
- */
-async function transitionWedding(
-  wedding: Wedding,
-  fromStatus: Wedding["status"],
-  toStatus: Wedding["status"],
-  reason: string,
-  now: Date,
-): Promise<boolean> {
-  const updated = await db
-    .update(weddings)
-    .set({ status: toStatus, updatedAt: now })
-    .where(and(eq(weddings.id, wedding.id), eq(weddings.status, fromStatus)))
-    .returning({ id: weddings.id });
-
-  if (updated.length === 0) return false;
-
-  await db.insert(lifecycleEvents).values({
-    weddingId: wedding.id,
-    organizationId: wedding.organizationId,
-    eventType: toStatus === "expired" ? "download_deadline_reached" : "upload_deadline_reached",
-    fromStatus,
-    toStatus,
-    reason,
-    occurredAt: now,
-    metadata: { automation: "lifecycle_scan" },
-  });
-
-  await db.insert(auditLogs).values({
-    organizationId: wedding.organizationId,
-    action: "wedding_status_changed",
-    resourceType: "wedding",
-    resourceId: wedding.id,
-    before: { status: fromStatus },
-    after: { status: toStatus },
-    metadata: { reason, automation: "lifecycle_scan" },
-  });
-
-  return true;
-}
 
 async function getWeddingContact(weddingId: string): Promise<WeddingContact | null> {
   const [row] = await db

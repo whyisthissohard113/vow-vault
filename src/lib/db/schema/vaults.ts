@@ -91,7 +91,11 @@ export const guestSessions = pgTable(
   },
   (table) => [
     uniqueIndex('guest_sessions_token_unique_idx').on(table.token),
-    index('guest_sessions_vault_idx').on(table.vaultId),
+    // Composite (vault_id, status): the Phase 13 lifecycle engine revokes guest
+    // sessions with `WHERE vault_id IN (…) AND status = 'active'` and purges by
+    // `vault_id`; the composite serves both (vault_id is a proper prefix).
+    // Replaces the standalone vault_id index, which was fully redundant.
+    index('guest_sessions_vault_status_idx').on(table.vaultId, table.status),
     index('guest_sessions_status_expires_idx').on(table.status, table.expiresAt),
   ],
 );

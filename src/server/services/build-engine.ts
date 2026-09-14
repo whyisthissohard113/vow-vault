@@ -19,6 +19,7 @@ import { eq, and, isNull, desc, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
+  auditLogs,
   buildJobs,
   buildJobSteps,
   weddings,
@@ -27,13 +28,13 @@ import {
   slideshows,
   flipbooks,
   expiryRules,
-  lifecycleEvents,
   orders,
   payments,
   products,
   templateVersions,
   customers,
 } from "@/lib/db/schema";
+import { transitionWeddingStatus, type TransitionResult } from "@/server/lifecycle/engine";
 import { resolveEntitlements, type ResolvedEntitlements } from "@/lib/entitlements";
 import { calculateExpiryDeadlines, type ExpiryDeadlines } from "@/lib/entitlements/expiry";
 import { NotFoundError } from "@/lib/auth/errors";
@@ -93,6 +94,11 @@ export interface BuildContext {
   qrCardRequested?: boolean;
   vaultPublished?: boolean;
   vaultStatus?: string;
+  // Results of the lifecycle-engine CAS transitions attempted during the run.
+  // used by stepAuditEvent to decide between a landed build_completed audit row
+  // and a skippedActiveTransition warning row (rebuild / idempotent re-run).
+  createVaultTransition?: TransitionResult;
+  publishTransition?: TransitionResult;
   emailQueued?: boolean;
   auditLogged?: boolean;
   reason?: string;
@@ -513,11 +519,17 @@ async function stepValidateWedding(ctx: BuildContext): Promise<Partial<BuildCont
     throw new Error(`Validation failed: ${errors.join(", ")}`);
   }
 
-  // Update wedding status to building
-  await db
-    .update(weddings)
-    .set({ status: "building" })
-    .where(eq(weddings.id, wedding.id));
+  // Move the wedding draft → building via the lifecycle engine (the ONLY
+  // mutation primitive for weddings.status). If the wedding is already
+  // building/active (rebuild or idempotent retry) the CAS fails and the helper
+  // returns changed:false — that is OK, we skip silently and never regress.
+  await transitionWeddingStatus({
+    weddingId: wedding.id,
+    fromStatus: "draft",
+    toStatus: "building",
+    reason: `Wedding build started (v${ctx.version})`,
+    actorUserId: ctx.actorUserId,
+  });
 
   return { wedding };
 }
@@ -611,13 +623,21 @@ async function stepCreateVault(ctx: BuildContext): Promise<Partial<BuildContext>
     // Note: In practice, you'd link the actual couple user IDs
   }
 
-  // Update wedding status to active (building complete, vault created)
-  await db
-    .update(weddings)
-    .set({ status: "active" })
-    .where(eq(weddings.id, wedding.id));
+  // Transition the wedding building → active through the lifecycle engine (no
+  // eventType override: the engine maps building → active to build_completed).
+  // On a fresh build this CAS lands and the engine writes the build_completed
+  // lifecycle event. If the wedding is already active/past (rebuild or
+  // idempotent re-run) the CAS fails and returns changed:false — treat as OK,
+  // don't error and never regress the status.
+  const createVaultTransition = await transitionWeddingStatus({
+    weddingId: wedding.id,
+    fromStatus: "building",
+    toStatus: "active",
+    reason: `Build v${ctx.version}: vault created`,
+    actorUserId: ctx.actorUserId,
+  });
 
-  return { vault };
+  return { vault, createVaultTransition };
 }
 
 async function stepApplyTemplate(ctx: BuildContext): Promise<Partial<BuildContext>> {
@@ -900,13 +920,23 @@ async function stepPublishVault(ctx: BuildContext): Promise<Partial<BuildContext
     })
     .where(eq(vaults.id, vault.id));
 
-  // Update wedding status to active (already done in create_vault, but confirm)
-  await db
-    .update(weddings)
-    .set({ status: "active" })
-    .where(eq(weddings.id, wedding.id));
+  // Authoritative building → active transition with the build_completed event.
+  // On a fresh build create_vault already landed the identical CAS, so this
+  // call returns changed:false (noop) — expected and fine. If the wedding is
+  // already active or further along (idempotent re-run or a rebuild after the
+  // wedding moved past active) the CAS fails: treat as changed:false and move
+  // on. NEVER regress a wedding from upload_closed/download_only/expired/
+  // archived back to active or building — that is a machine violation.
+  const publishTransition = await transitionWeddingStatus({
+    weddingId: wedding.id,
+    fromStatus: "building",
+    toStatus: "active",
+    reason: `Build v${ctx.version} completed successfully`,
+    actorUserId: ctx.actorUserId,
+    eventType: "build_completed",
+  });
 
-  return { vaultPublished: true, vaultStatus: "published" };
+  return { vaultPublished: true, vaultStatus: "published", publishTransition };
 }
 
 async function stepQueueEmail(ctx: BuildContext): Promise<Partial<BuildContext>> {
@@ -983,25 +1013,56 @@ async function stepAuditEvent(ctx: BuildContext): Promise<Partial<BuildContext>>
 
   if (!vault) throw new Error("Vault not created");
 
-  // Create lifecycle event for build completion
-  await db.insert(lifecycleEvents).values({
-    weddingId: wedding.id,
-    organizationId,
-    eventType: "build_completed",
-    fromStatus: "building",
-    toStatus: "active",
-    reason: `Build v${version} completed successfully`,
-    actorUserId: actorUserId ?? null,
-    metadata: {
-      buildJobId,
-      vaultId: vault.id,
-      vaultSlug: vault.slug,
-      packageCode: entitlements.packageCode,
-      featuresEnabled: Object.keys(entitlements.features).filter(
-        (k) => entitlements.features[k] === true,
-      ),
-    },
-  });
+  // The build_completed lifecycle event is written by the lifecycle engine itself
+  // when the building → active CAS transition lands (create_vault or
+  // publish_vault). We never insert it here — that would duplicate the event.
+  // Instead, append a single audit_logs row recording the build completion.
+  const transitionLanded =
+    ctx.createVaultTransition?.changed === true || ctx.publishTransition?.changed === true;
+
+  if (!transitionLanded) {
+    // Neither CAS landed: the wedding was already active or further along
+    // (idempotent re-run / rebuild after the wedding moved past active). We
+    // must NOT regress the status or fabricate a second build_completed event,
+    // so record a warning-ish audit row with the current status.
+    const [current] = await db
+      .select({ status: weddings.status })
+      .from(weddings)
+      .where(eq(weddings.id, wedding.id))
+      .limit(1);
+
+    await db.insert(auditLogs).values({
+      organizationId,
+      action: "build_completed",
+      resourceType: "wedding",
+      resourceId: wedding.id,
+      actorUserId: actorUserId ?? null,
+      metadata: {
+        skippedActiveTransition: true,
+        currentStatus: current?.status ?? null,
+        buildJobId,
+        version,
+      },
+    });
+  } else {
+    await db.insert(auditLogs).values({
+      organizationId,
+      action: "build_completed",
+      resourceType: "wedding",
+      resourceId: wedding.id,
+      actorUserId: actorUserId ?? null,
+      metadata: {
+        buildJobId,
+        vaultId: vault.id,
+        vaultSlug: vault.slug,
+        packageCode: entitlements.packageCode,
+        featuresEnabled: Object.keys(entitlements.features).filter(
+          (k) => entitlements.features[k] === true,
+        ),
+        version,
+      },
+    });
+  }
 
   return { auditLogged: true };
 }

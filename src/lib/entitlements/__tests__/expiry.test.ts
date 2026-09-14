@@ -187,8 +187,10 @@ describe("Window Status Checks", () => {
       expect(getLifecycleStatusFromDeadlines(uploadPast, downloadFuture, now)).toBe("upload_closed");
     });
 
-    it("returns 'expired' when both windows closed", () => {
-      expect(getLifecycleStatusFromDeadlines(uploadPast, downloadPast, now)).toBe("expired");
+    it("returns 'download_only' when both windows closed", () => {
+      expect(getLifecycleStatusFromDeadlines(uploadPast, downloadPast, now)).toBe(
+        "download_only",
+      );
     });
 
     // Note: uploadFuture + downloadPast is logically impossible since
