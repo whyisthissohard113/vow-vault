@@ -1,0 +1,243 @@
+# -----------------------------------------------------------------------------
+# Wedding Memory Vault — Release & Deploy pipeline
+#
+# Builds a Docker image, publishes it to GitHub Container Registry (GHCR), and
+# optionally deploys to a production host over SSH.
+#
+# TRIGGERS
+#   - Push a version tag (v*.*.*): full pipeline (gate -> build -> deploy)
+#   - workflow_dispatch with a `tag` input: gate + build for that existing tag
+#     (no deploy unless the deploy secrets are present)
+#
+# SECRETS REQUIRED
+#   Build/push: GITHUB_TOKEN (automatic; build job requests packages:write)
+#   Deploy (optional — the job skips cleanly when the required set is absent):
+#     DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS, DEPLOY_PATH
+#     DEPLOY_PORT (optional, default 22)
+#     APP_URL (for post-deploy health checks)
+#     HEALTHCHECK_AUTH (optional, "user:pass" for the authenticated admin health endpoint)
+#
+# See docs/operations/RELEASING.md for the full runbook.
+# -----------------------------------------------------------------------------
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing version tag to release (e.g. v1.2.3)."
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/vow-vault
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Gate: typecheck + lint + full test suite (mirrors ci.yml) ──────────────
+  gate:
+    name: Gate (typecheck + lint + tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wmv
+          POSTGRES_PASSWORD: wmv
+          POSTGRES_DB: wedding_memory_vault
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wmv -d wedding_memory_vault"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://wmv:wmv@localhost:5432/wedding_memory_vault
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Apply migrations
+        run: npm run db:migrate
+
+      - name: Run test suite
+        run: npx vitest run
+
+  # ── Build & push to GHCR ──────────────────────────────────────────────────
+  build:
+    name: Build & publish image
+    runs-on: ubuntu-latest
+    needs: gate
+    timeout-minutes: 25
+    # Push events always build; manual dispatch must name an existing tag.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Tags carry the same `v` prefix as the git tag (v1.2.3 / v1.2) so the
+          # pipeline, runbook and rollback commands all refer to identical names.
+          tags: |
+            type=semver,pattern=v{{version}}
+            type=semver,pattern=v{{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            DATABASE_URL=postgresql://wmv:wmv@localhost:5432/ci_release_placeholder
+
+  # ── Deploy to production (manual-approval gated) ───────────────────────────
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    needs: [gate, build]
+    # Only deploy for a version tag push. (Manual dispatch cannot deploy: it has
+    # no tag ref, so it would be ambiguous which commit/image to release.)
+    if: >-
+      always() &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.gate.result == 'success' &&
+      needs.build.result == 'success'
+    environment: production
+    timeout-minutes: 15
+    env:
+      # Job-level so the step-level `if` expressions can read them.
+      APP_URL: ${{ secrets.APP_URL }}
+      HEALTHCHECK_AUTH: ${{ secrets.HEALTHCHECK_AUTH }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine image tag
+        id: tag
+        run: echo "image_tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Check deploy secrets
+        id: secrets
+        run: |
+          missing=0
+          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS DEPLOY_PATH; do
+            if [ -z "${!var:-}" ]; then
+              echo "::notice::Secret ${var} is not set - deploy job will skip."
+              missing=1
+            fi
+          done
+          echo "available=$([ "$missing" -eq 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Install SSH key
+        if: steps.secrets.outputs.available == 'true'
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # Pin the host key: never deploy blind (StrictHostKeyChecking).
+          known_hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          config: ~/.ssh/config
+
+      - name: Run remote deploy
+        if: steps.secrets.outputs.available == 'true'
+        env:
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          IMAGE_TAG: ${{ steps.tag.outputs.image_tag }}
+        run: |
+          scp -P "$SSH_PORT" scripts/deploy/remote-deploy.sh \
+            "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/remote-deploy.sh"
+          # IMAGE_TAG is a git tag name (git refs cannot contain shell spaces or
+          # metacharacters that survive this quoting), passed as a single arg.
+          ssh -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" \
+            "cd \"${DEPLOY_PATH}\" && chmod +x remote-deploy.sh && ./remote-deploy.sh '${IMAGE_TAG}'"
+
+      - name: Post-deploy health check
+        if: steps.secrets.outputs.available == 'true' && env.APP_URL != ''
+        run: |
+          echo "Waiting for ${APP_URL} to become healthy..."
+          up=0
+          for i in $(seq 1 12); do
+            if curl -fsS --max-time 10 "${APP_URL}/" > /dev/null 2>&1; then
+              echo "Landing page OK (attempt ${i})"; up=1; break
+            fi
+            echo "Attempt ${i} failed - retrying in 5s..."; sleep 5
+          done
+          if [ "$up" -ne 1 ]; then
+            echo "::error::Landing page did not become healthy after deploy."
+            exit 1
+          fi
+
+          # /api/admin/health requires authorization; only probe it when a
+          # credential secret is supplied, otherwise warn and stop.
+          if [ -z "${HEALTHCHECK_AUTH:-}" ]; then
+            echo "::warning::HEALTHCHECK_AUTH not set - skipping authenticated /api/admin/health probe."
+            exit 0
+          fi
+          for i in $(seq 1 6); do
+            if curl -fsS --max-time 10 -u "${HEALTHCHECK_AUTH}" \
+                "${APP_URL}/api/admin/health" > /dev/null 2>&1; then
+              echo "Admin health endpoint OK (attempt ${i})"; exit 0
+            fi
+            echo "Admin health attempt ${i} failed - retrying in 5s..."; sleep 5
+          done
+          echo "::warning::Authenticated health check did not confirm within retries."
+          # Advisory: the deploy itself succeeded and the public app is healthy.

@@ -163,3 +163,25 @@ unique index must use a globally unique value for the indexed column(s)
 (e.g. a distinct template `code`). Each UUID family is already unique per suite,
 but partial-unique indexes ignore primary keys. Check partial-unique indexes in
 `schema/` before naming platform fixtures.
+
+## Phase 16 release/deploy pipeline (2026-09-15, devops worker)
+
+- **`docker-compose.prod.yml` image override**: replaced `build: { context: . }`
+  with `image: ${WMV_IMAGE:-wmv:latest}` on all application services (app,
+  workers, migrate). The compose file is now a pure deployment manifest — it
+  never builds; it always pulls a pre-tagged image. `WMV_IMAGE` defaults to
+  `wmv:latest` for local smoke tests (`docker build -t wmv:latest .` first) and
+  is overridden to a GHCR tag by `remote-deploy.sh` in production. No other
+  compose contract or secret handling changed.
+- **Release workflow** (`.github/workflows/release.yml`): gate (typecheck +
+  lint + full test suite against Postgres 16) → build-and-push to GHCR
+  (`ghcr.io/whyisthissohard113/vow-vault`, `v`-prefixed semver + sha-<short> +
+  latest-on-tag, `linux/amd64`, GHA layer cache) → deploy job (manual-approval
+  gated via GitHub `production` environment, SSH + `remote-deploy.sh` with host
+  key pinning, post-deploy health check). `workflow_dispatch` requires an
+  existing `v*` tag input. Deploy skips cleanly when
+  `DEPLOY_HOST`/`DEPLOY_USER`/`DEPLOY_SSH_KEY`/`DEPLOY_KNOWN_HOSTS`/`DEPLOY_PATH`
+  secrets are absent.
+- **GHCR registry target**: `ghcr.io/whyisthissohard113/vow-vault`. Uses the
+  built-in `GITHUB_TOKEN` with `packages: write`; no extra credentials needed for
+  the build/push path.

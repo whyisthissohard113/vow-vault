@@ -127,8 +127,7 @@ services:
 
   # One-shot: apply Drizzle migrations, then exit (0). `app`/workers wait on it.
   migrate:
-    build:
-      context: .
+    image: ${WMV_IMAGE:-wmv:latest}
     command: npm run db:migrate
     environment: *wmv-env
     depends_on:
@@ -137,8 +136,7 @@ services:
     restart: 'no'
 
   app:
-    build:
-      context: .
+    image: ${WMV_IMAGE:-wmv:latest}
     command: node server.js
     environment: *wmv-env
     ports:
@@ -153,8 +151,7 @@ services:
     restart: unless-stopped
 
   build-worker:
-    build:
-      context: .
+    image: ${WMV_IMAGE:-wmv:latest}
     command: node_modules/.bin/tsx src/server/services/build-worker.entry.ts
     environment: *wmv-env
     depends_on:
@@ -165,8 +162,7 @@ services:
     restart: unless-stopped
 
   media-worker:
-    build:
-      context: .
+    image: ${WMV_IMAGE:-wmv:latest}
     command: node_modules/.bin/tsx src/server/services/media-worker.entry.ts
     environment: *wmv-env
     depends_on:
@@ -177,8 +173,7 @@ services:
     restart: unless-stopped
 
   email-worker:
-    build:
-      context: .
+    image: ${WMV_IMAGE:-wmv:latest}
     command: node_modules/.bin/tsx src/server/services/email-worker.entry.ts
     environment: *wmv-env
     depends_on:
