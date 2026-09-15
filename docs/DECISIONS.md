@@ -146,3 +146,20 @@ including the new `phase14-e2e.test.ts` full-flow proof), `tsc --noEmit` → 0,
   the production compose/anchor sets `NODE_ENV=production` (which 404s the
   simulate route) and the deploy checklist requires `PAYFAST_MODE=test|live`.
   Documented in `docs/operations/DEPLOYMENT.md` §6.
+
+## CI fixture convention: platform-code uniqueness (2026-09-15, orchestrator)
+
+The `templates` table has a **partial unique index** (`templates_platform_code_unique_idx`)
+enforcing at most one `organization_id IS NULL` template per `code` across the
+entire shared DB. When multiple test suites insert a platform template with the
+same code — even if they use different primary keys — only the first insert
+succeeds; subsequent ones hit `onConflictDoNothing` and silently no-op, then
+their `template_versions` FK insert fails because the expected parent row is
+absent. This caused the first CI failure (8 tests in `build-engine.test.ts`).
+
+**Convention (applies to all DB-backed integration suites sharing a database):**
+Every suite that inserts platform-level (org NULL) rows subject to a partial
+unique index must use a globally unique value for the indexed column(s)
+(e.g. a distinct template `code`). Each UUID family is already unique per suite,
+but partial-unique indexes ignore primary keys. Check partial-unique indexes in
+`schema/` before naming platform fixtures.

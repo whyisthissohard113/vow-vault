@@ -84,11 +84,16 @@ async function setupTestData(packageCode: "silver" | "gold" | "platinum" = "gold
     organizationId: TEST_ORG_ID,
   }).onConflictDoNothing();
 
-  // Create template
+  // Create template — the platform-code 'classic' is NOT used here because the
+  // partial-unique index `templates_platform_code_unique_idx` only allows ONE
+  // platform (org NULL) template per code. When this suite runs in parallel with
+  // `phase14-e2e.test.ts` (which also inserts platform code 'classic'), the
+  // loser's `onConflictDoNothing` silently no-ops and its `template_versions`
+  // insert then violates the FK. Using a distinct code avoids the collision.
   await db.insert(templates).values({
     id: TEST_TEMPLATE_ID,
-    code: "classic",
-    name: "Classic Template",
+    code: "e2e-build-engine-test",
+    name: "Build Engine Test Template",
     status: "active",
     organizationId: null,
   }).onConflictDoNothing();

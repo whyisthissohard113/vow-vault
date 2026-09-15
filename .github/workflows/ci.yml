@@ -52,7 +52,9 @@ jobs:
   tests:
     name: Tests (PostgreSQL 16)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Serial test-file execution (see vitest.config.ts) against one shared DB:
+    # deterministic, but the full suite takes several minutes.
+    timeout-minutes: 30
     # Clean service container per run: the integration suites share fixed UUID
     # families and one dev database in local development, so CI must never run
     # them twice against the same Postgres data.

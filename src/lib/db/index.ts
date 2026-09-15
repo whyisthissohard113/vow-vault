@@ -24,6 +24,10 @@ const client = postgres(connectionString, {
   max: 10,
   prepare: false,
   onnotice: () => undefined, // suppress notice noise in dev
+  // postgres.js defaults to 30s; Docker Desktop's port-forward occasionally
+  // stalls TCP connects for ~1min under sustained local DB load (spotted by
+  // the admin integration suite). A long outer budget rides those stalls out.
+  connect_timeout: 120,
 });
 
 export const db = drizzle(client, { schema });
