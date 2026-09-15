@@ -1,0 +1,126 @@
+# -----------------------------------------------------------------------------
+# Wedding Memory Vault — CI pipeline
+#
+# No secrets are required by this workflow.
+#   - checks : typecheck + lint (fast feedback)
+#   - tests  : full vitest suite against a clean, throwaway PostgreSQL 16
+#              service container (wmv/wmv/wedding_memory_vault)
+#   - build  : `next build` with a throwaway DATABASE_URL (see comment below)
+#
+# Triggers: push + pull_request on `main`, plus manual workflow_dispatch.
+# -----------------------------------------------------------------------------
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  checks:
+    name: Checks (typecheck + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+  tests:
+    name: Tests (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Clean service container per run: the integration suites share fixed UUID
+    # families and one dev database in local development, so CI must never run
+    # them twice against the same Postgres data.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wmv
+          POSTGRES_PASSWORD: wmv
+          POSTGRES_DB: wedding_memory_vault
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wmv -d wedding_memory_vault"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://wmv:wmv@localhost:5432/wedding_memory_vault
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migrations
+        # Applies ./drizzle/0000-0003 against the throwaway service container.
+        run: npm run db:migrate
+
+      - name: Run test suite
+        run: npx vitest run
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Throwaway, non-secret placeholder — REQUIRED, never connected to.
+      # `next build` evaluates module-level imports of every route during
+      # page-data collection, and the db client (src/lib/db/index.ts) throws
+      # at import time when DATABASE_URL is missing (verified in Docker: the
+      # build fails at /api/auth/register without it). No real database is
+      # reached by the build — the value just has to parse as a connection
+      # string so postgres-js constructs a client lazily.
+      DATABASE_URL: postgresql://wmv:wmv@localhost:5432/ci_placeholder_never_used
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # Artifact upload is intentionally skipped to keep the pipeline fast
+      # (<10 min). The standalone Docker image is built reproducibly from
+      # source at deploy time (see Dockerfile + docs/operations/DEPLOYMENT.md).

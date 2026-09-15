@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# The documented env template IS meant to be tracked in the repo.
+!.env.example
 
 # vercel
 .vercel

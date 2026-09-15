@@ -1,0 +1,193 @@
+# -----------------------------------------------------------------------------
+# Wedding Memory Vault — production compose stack
+#
+# Self-contained stack for a single-host production deployment:
+#   postgres (16) + minio (S3-compatible object storage) + redis (reserved for
+#   the future queue layer) + app (Next.js standalone) + 3 background workers +
+#   one-shot migrate + one-shot minio bucket init.
+#
+# SECRETS: nothing in this file is a real secret. Non-secret defaults keep the
+# stack bootable for a smoke test; REAL values (NEXTAUTH_SECRET, PayFast live
+# credentials, SMTP credentials, S3 secrets) are supplied at deploy time, e.g.:
+#
+#   cp .env.example .env.prod        # fill in real values
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+# Production notes:
+#   - PAYFAST_MODE is safe only for the local simulator. Set PAYFAST_MODE=test
+#     (sandbox) or =live with the merchant key/passphrase and the PAYFAST
+#     NOTIFY_URL to the public webhook endpoint before real revenue flows.
+#     The simulator route is hard-disabled under NODE_ENV=production.
+#   - For a managed RDS/Neon database or Cloudflare R2, override DATABASE_URL
+#     and the S3_* variables (S3_ENDPOINT=https://<acct>.r2.cloudflarestorage.com,
+#     S3_FORCE_PATH_STYLE=false) and remove the embedded postgres/minio services.
+# -----------------------------------------------------------------------------
+
+name: wmv-prod
+
+# Shared production environment applied to app + workers + migrate.
+# Non-secret values below default to the embedded stack; every secret is a
+# placeholder you MUST override in your deploy `.env.prod`.
+x-wmv-env: &wmv-env
+  NODE_ENV: production
+  # Postgres (embedded service; override for managed DB)
+  DATABASE_URL: postgresql://${POSTGRES_USER:-wmv}:${POSTGRES_PASSWORD:-wmv}@postgres:5432/${POSTGRES_DB:-wedding_memory_vault}
+  # App URL used in emails, QR destinations and PayFast redirects
+  APP_URL: ${APP_URL:-http://localhost:3000}
+  NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+  NEXTAUTH_URL: ${APP_URL:-http://localhost:3000}
+  NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-64-char-random-string}
+  # Email — console provider when SMTP is unset (safe default, logs instead of sending)
+  EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-}
+  EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-587}
+  EMAIL_SMTP_USER: ${EMAIL_SMTP_USER:-}
+  EMAIL_SMTP_PASS: ${EMAIL_SMTP_PASS:-}
+  EMAIL_FROM: ${EMAIL_FROM:-noreply@weddingmemoryvault.app}
+  EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Wedding Memory Vault}
+  EMAIL_WEBHOOK_SECRET: ${EMAIL_WEBHOOK_SECRET:-}
+  # Object storage (embedded MinIO; override endpoint/creds for R2/other S3)
+  S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-wmv-prod}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-wmv}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-wmv-secret}
+  S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+  # Redis — reserved for the future BullMQ queue layer
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+  # PayFast — NEVER run =live with placeholder credentials
+  PAYFAST_MERCHANT_ID: ${PAYFAST_MERCHANT_ID:-}
+  PAYFAST_MERCHANT_KEY: ${PAYFAST_MERCHANT_KEY:-}
+  PAYFAST_PASSPHRASE: ${PAYFAST_PASSPHRASE:-}
+  PAYFAST_MODE: ${PAYFAST_MODE:-simulated}
+  PAYFAST_NOTIFY_URL: ${PAYFAST_NOTIFY_URL:-http://localhost:3000/api/webhooks/payments/payfast}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wmv}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wmv}
+      POSTGRES_DB: ${POSTGRES_DB:-wedding_memory_vault}
+    volumes:
+      - wmv_prod_pgdata:/var/lib/postgresql/data
+    # Published to loopback only so host-side pg_dump / mc tooling can reach it.
+    # Managed DB (RDS/Neon) deployments can drop this block entirely.
+    ports:
+      - '127.0.0.1:5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-wmv} -d ${POSTGRES_DB:-wedding_memory_vault}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-wmv}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-wmv-secret}
+    volumes:
+      - wmv_prod_minio:/data
+    # API + console on loopback for ops/tooling. Remove for managed R2.
+    ports:
+      - '127.0.0.1:9000:9000'
+      - '127.0.0.1:9001:9001'
+    healthcheck:
+      # Self-contained: (re)create the local alias from the container's own
+      # MINIO_ROOT_USER/PASSWORD env, then probe readiness. Note the doubled $
+      # so compose does not interpolate container env vars.
+      test: ['CMD-SHELL', 'mc alias set local http://localhost:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD >/dev/null 2>&1 && mc ready local']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${S3_ACCESS_KEY_ID:-wmv} ${S3_SECRET_ACCESS_KEY:-wmv-secret} &&
+      mc mb --ignore-existing local/${S3_BUCKET:-wmv-prod} &&
+      echo 'MinIO bucket ready'
+      "
+    restart: 'no'
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # One-shot: apply Drizzle migrations, then exit (0). `app`/workers wait on it.
+  migrate:
+    build:
+      context: .
+    command: npm run db:migrate
+    environment: *wmv-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  app:
+    build:
+      context: .
+    command: node server.js
+    environment: *wmv-env
+    ports:
+      - '${APP_PORT:-3000}:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  build-worker:
+    build:
+      context: .
+    command: node_modules/.bin/tsx src/server/services/build-worker.entry.ts
+    environment: *wmv-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  media-worker:
+    build:
+      context: .
+    command: node_modules/.bin/tsx src/server/services/media-worker.entry.ts
+    environment: *wmv-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  email-worker:
+    build:
+      context: .
+    command: node_modules/.bin/tsx src/server/services/email-worker.entry.ts
+    environment: *wmv-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  wmv_prod_pgdata:
+  wmv_prod_minio:

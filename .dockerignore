@@ -1,0 +1,35 @@
+# Dependencies / build output (recreated inside the image stages)
+node_modules
+.next
+out
+build
+coverage
+
+# Local secrets — never copied into the image. Runtime env vars come from the
+# container environment / secrets, never from a baked .env file. (Note: a local
+# `.env` would otherwise be traced into `.next/standalone` by `next build`.)
+.env
+.env.*
+!.env.example
+
+# VCS / editor / tooling
+.git
+.gitignore
+.gitattributes
+.opencode
+.vscode
+.idea
+opencode.jsonc
+README-OPENCODE.md
+FILE-MANIFEST.txt
+
+# Documentation is not part of the runtime image
+docs
+
+# TypeScript incremental build metadata
+*.tsbuildinfo
+next-env.d.ts
+
+# OS cruft
+.DS_Store
+Thumbs.db

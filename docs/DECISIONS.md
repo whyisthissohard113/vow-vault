@@ -109,3 +109,40 @@ contract refinements above:
 Verification of the entire phase: `npx vitest run` → 537/537 (21 files,
 including the new `phase14-e2e.test.ts` full-flow proof), `tsc --noEmit` → 0,
 `eslint` → 0.
+
+## Phase 15 production packaging / CI-CD (2026-09-15, devops worker)
+
+- **Standalone output**: `next.config.ts` now sets `output: "standalone"`. The
+  production Docker image runs the app via `.next/standalone/server.js` and the
+  workers via `tsx` entrypoints from the same image; `docker-compose.prod.yml`
+  wires app + 3 workers + one-shot `migrate` + `minio-init`. No shared backend
+  contract changed.
+- **Build-time `DATABASE_URL` is REQUIRED by `next build`** (verified in
+  Docker): Next.js 16 / Turbopack evaluates module-level imports of every route
+  during page-data collection, and `src/lib/db` throws at import when the env
+  var is missing (`/api/auth/register` is the first casualty). CI's `build` job
+  and the Docker `builder` stage supply a throwaway, never-connected
+  `DATABASE_URL` (postgres-js constructs the client lazily; no query is run at
+  build time). No real or secret credential is used or baked in.
+- **Runtime tooling moved to `dependencies`**: `tsx` (workers), `dotenv`
+  (worker/`drizzle.config.ts` env loading), `drizzle-kit` (one-shot `db:migrate`)
+  are production-required by the image's runtime roles, so they moved from
+  `devDependencies`. Infra-level only; no app runtime import surface changed.
+- **`.env` is excluded from every artifact**: `.dockerignore` ignores `.env*`
+  so no local secrets can be traced or baked into the image. Note that a
+  *local* `next build` (with `.env` present) traces `.env*` into
+  `.next/standalone` — deploy only via the Docker image (Linux builder, no
+  `.env` context) or sanitize a locally-zipped standalone before shipping it.
+- **Windows-built standalone warning**: the standalone folder is always produced
+  inside the Linux Docker builder. Windows output tracing can embed
+  drive-letter paths that break Linux bundles — never copy a Windows
+  `.next/standalone`/`node_modules` into a Linux image.
+- **New env contract**: `NEXT_PUBLIC_APP_URL` added to `.env.example`. Server
+  modules (`build-engine.ts`, `public-url.ts`, `qr-service.ts`,
+  `public-vault.ts`, email templates) read it to construct public URLs; it was
+  already referenced by code while `.env.example` only documented `APP_URL`.
+  In production set both to the public origin.
+- **Simulator disable rule**: `PAYFAST_MODE=simulated` is a local-only flow;
+  the production compose/anchor sets `NODE_ENV=production` (which 404s the
+  simulate route) and the deploy checklist requires `PAYFAST_MODE=test|live`.
+  Documented in `docs/operations/DEPLOYMENT.md` §6.
