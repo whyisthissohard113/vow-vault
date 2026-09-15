@@ -4,22 +4,30 @@
  * WeddingWizard — guided creation of a wedding vault from dossier to QR code.
  *
  * Flow: intro → couple → wedding details (creates the dossier via
- * POST /api/weddings) → package → customize → payment (demo) → build →
- * preview → share.
+ * POST /api/weddings) → package → customize → payment (real checkout) →
+ * build → preview → share.
  *
  * Notes:
  *  - Authorization stays server-side: the wizard calls the guarded API routes
  *    and the server page gates it behind CREATE_WEDDING. Roles without
  *    MANAGE_WEDDING (staff) can create the draft but building/managing is
  *    deferred to an admin/owner, so the wizard stops after creation for them.
- *  - The payment step is a UI-only simulation (no order/payment is created);
- *    a real build without a paid order will fail at `verify_payment` with a
- *    clear message, which this wizard surfaces.
+ *  - Payment uses the real billing flow: the payment step opens (or reuses) an
+ *    order + payment via POST /api/checkout and reads the webhook-fed status
+ *    from GET /api/payments/[paymentId]. In dev (PAYFAST_MODE=simulated) a
+ *    "Pay now (simulated)" button drives POST /api/payments/simulate/[paymentId]
+ *    through the REAL webhook pipeline. In live mode the wizard redirects to
+ *    PayFast and /purchase/return renders the settlement result. The browser
+ *    redirect is never the source of truth — nothing client-side marks a
+ *    payment paid.
+ *  - The build auto-enqueues server-side when the payment is activated; the
+ *    later "Build" step remains available as a manual re-trigger and is not
+ *    blocked on a payment simulation.
  *  - A minimal draft is persisted to sessionStorage so the wizard can resume
  *    after an accidental refresh.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -29,6 +37,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
   IconArrowRight,
@@ -43,6 +52,20 @@ import {
 import { PACKAGE_METADATA } from "@/lib/entitlements/packages";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import {
+  MAX_PAYMENT_POLLS,
+  PAYMENT_POLL_INTERVAL_MS,
+  checkoutForWedding,
+  fetchPaymentStatus,
+  getRememberedPaidPayment,
+  isPaidPaymentStatus,
+  paymentAmountCents,
+  rememberPaidPayment,
+  simulatePayment,
+  type Checkout,
+  type CheckoutUiError,
+  type PaymentStatus,
+} from "../checkout-actions";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -148,6 +171,15 @@ export function WeddingWizard({
   const [buildSteps, setBuildSteps] = useState<Array<{ stepKey: string; status: string }>>([]);
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [qrTargetUrl, setQrTargetUrl] = useState("");
+
+  // Payment step state (real checkout: order/payment created server-side).
+  const [checkout, setCheckout] = useState<Checkout | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | null>(null);
+  const [paymentError, setPaymentError] = useState<CheckoutUiError | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [pollPaymentId, setPollPaymentId] = useState<string | null>(null);
+  const [paymentPollsExhausted, setPaymentPollsExhausted] = useState(false);
+  const paymentStepEntered = useRef(false);
 
   const step = STEPS[stepIndex]?.name ?? "intro";
 
@@ -347,6 +379,149 @@ export function WeddingWizard({
     }
   }, [weddingId]);
 
+  // ── Payment step (real checkout) ───────────────────────────────────────────
+
+  const preparePayment = useCallback(async () => {
+    if (!weddingId) {
+      setPaymentError({
+        kind: "validation",
+        message: "Create the wedding before choosing a package and paying.",
+      });
+      return;
+    }
+    setPaymentLoading(true);
+    setPaymentError(null);
+    setPaymentPollsExhausted(false);
+    try {
+      // If this browser already saw the payment complete, read that settled
+      // payment instead of creating a duplicate order (the checkout endpoint
+      // reuses only *pending* orders).
+      const remembered = getRememberedPaidPayment(weddingId);
+      if (remembered) {
+        const rememberedRes = await fetchPaymentStatus(remembered);
+        if (rememberedRes.ok && isPaidPaymentStatus(rememberedRes.value.status)) {
+          setPaymentStatus(rememberedRes.value);
+          return;
+        }
+      }
+
+      const result = await checkoutForWedding(weddingId);
+      if (!result.ok) {
+        setCheckout(null);
+        setPaymentError(result.error);
+        return;
+      }
+      setCheckout(result.value);
+      if (result.value.isSimulated) {
+        // Dev simulation: keep the user here and poll; the "Pay now
+        // (simulated)" button drives the real webhook pipeline.
+        setPollPaymentId(result.value.paymentId);
+      } else {
+        // Live/test PayFast: hand over to the provider. The redirect is never
+        // the source of truth — /purchase/return renders the settled status.
+        window.location.href = result.value.redirectUrl;
+      }
+    } finally {
+      setPaymentLoading(false);
+    }
+  }, [weddingId]);
+
+  // Entering the payment step = open/reuse the checkout exactly once per entry
+  // (guard against spamming; the endpoint is idempotent for pending orders).
+  useEffect(() => {
+    if (step !== "payment") {
+      paymentStepEntered.current = false;
+      return;
+    }
+    if (paymentStepEntered.current) return;
+    paymentStepEntered.current = true;
+    void preparePayment();
+  }, [step, preparePayment]);
+
+  // Auto-poll the payment status every 2s while a checkout is awaiting the
+  // (simulated or live) webhook.
+  useEffect(() => {
+    if (!pollPaymentId) return;
+    let cancelled = false;
+    let polls = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const tick = async () => {
+      if (cancelled) return;
+      polls += 1;
+      const res = await fetchPaymentStatus(pollPaymentId);
+      if (cancelled) return;
+      if (res.ok) {
+        setPaymentStatus(res.value);
+        if (isPaidPaymentStatus(res.value.status)) {
+          if (weddingId) rememberPaidPayment(weddingId, pollPaymentId);
+          setPollPaymentId(null);
+          return;
+        }
+        if (res.value.status === "failed" || res.value.status === "refunded") {
+          setPaymentError({
+            kind: "validation",
+            message: res.value.failureReason ?? "The payment did not complete.",
+          });
+          setPollPaymentId(null);
+          return;
+        }
+      } else if (
+        res.error.kind === "unauthorized" ||
+        res.error.kind === "forbidden" ||
+        res.error.kind === "not-found"
+      ) {
+        setPaymentError(res.error);
+        setPollPaymentId(null);
+        return;
+      }
+      if (polls >= MAX_PAYMENT_POLLS) {
+        setPaymentPollsExhausted(true);
+        setPollPaymentId(null);
+        return;
+      }
+      timer = setTimeout(tick, PAYMENT_POLL_INTERVAL_MS);
+    };
+
+    timer = setTimeout(tick, 0);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [pollPaymentId, weddingId]);
+
+  const handleSimulatedPay = useCallback(async () => {
+    if (!checkout) return;
+    setPaymentLoading(true);
+    setPaymentError(null);
+    const res = await simulatePayment(checkout.paymentId);
+    setPaymentLoading(false);
+    if (!res.ok) {
+      setPaymentError(res.error);
+      return;
+    }
+    // The simulate endpoint already ran through the REAL webhook pipeline;
+    // refreshing the poll surfaces the completed status.
+    setPaymentPollsExhausted(false);
+    setPollPaymentId(checkout.paymentId);
+  }, [checkout]);
+
+  const retryPayment = useCallback(() => {
+    setPaymentError(null);
+    setPaymentPollsExhausted(false);
+    void preparePayment();
+  }, [preparePayment]);
+
+  const checkPaymentAgain = useCallback(() => {
+    setPaymentError(null);
+    setPaymentPollsExhausted(false);
+    if (checkout) {
+      setPollPaymentId(checkout.paymentId);
+    } else {
+      void preparePayment();
+    }
+  }, [checkout, preparePayment]);
+
   // ── Step transitions ───────────────────────────────────────────────────────
 
   async function handleNext() {
@@ -399,9 +574,18 @@ export function WeddingWizard({
         if (ok) goTo(stepIndex + 1);
         return;
       }
-      case "payment":
-        goTo(stepIndex + 1);
+      case "payment": {
+        if (paymentStatus?.status === "completed") {
+          goTo(stepIndex + 1);
+          return;
+        }
+        setError(
+          paymentStatus?.status === "failed" || paymentStatus?.status === "refunded"
+            ? "The payment did not complete — retry the checkout to continue."
+            : "Complete the payment to continue building the vault.",
+        );
         return;
+      }
       case "build":
         await handleBuildStep();
         return;
@@ -423,6 +607,11 @@ export function WeddingWizard({
   }
 
   const packageMeta = PACKAGE_METADATA.find((p) => p.code === data.packageCode);
+
+  // The payment step's Continue / Build action is only enabled once a payment
+  // has completed (server-verified). All other steps keep the default.
+  const paymentStepComplete =
+    step !== "payment" || paymentStatus?.status === "completed";
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -708,8 +897,9 @@ export function WeddingWizard({
                   Payment
                 </h2>
                 <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                  This wizard is a demonstration — the payment provider
-                  integration lives with the billing service.
+                  One-time purchase that unlocks the vault build. The payment is
+                  verified server-side through the payment provider before the
+                  vault is built.
                 </p>
               </div>
               <div className="rounded-2xl border border-zinc-200 p-6 dark:border-zinc-800">
@@ -722,13 +912,126 @@ export function WeddingWizard({
                       {formatCurrency(packageMeta?.priceCents ?? 0, "ZAR")}
                     </p>
                   </div>
-                  <Badge tone="warning">Demo</Badge>
+                  {checkout ? <Badge tone="neutral">{checkout.orderNumber}</Badge> : null}
                 </div>
-                <p className="mt-4 text-xs text-zinc-400">
-                  In production this step redirects to a PayFast/Peach payment,
-                  and the build only proceeds after a completed payment is
-                  verified server-side.
-                </p>
+
+                {checkout ? (
+                  <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <dt className="text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Item
+                      </dt>
+                      <dd className="mt-1 text-zinc-800 dark:text-zinc-200">
+                        {checkout.itemName}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Total
+                      </dt>
+                      <dd className="mt-1 font-medium text-zinc-800 dark:text-zinc-200">
+                        {formatCurrency(checkout.totalCents, checkout.currency)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-medium uppercase tracking-wider text-zinc-400">
+                        Status
+                      </dt>
+                      <dd className="mt-1">
+                        <StatusBadge status={paymentStatus?.status ?? checkout.status} />
+                      </dd>
+                    </div>
+                  </dl>
+                ) : null}
+
+                <div className="mt-5 space-y-3">
+                  {paymentStatus?.status === "completed" ? (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-900 dark:bg-emerald-950/40">
+                      <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+                        Payment received — thank you!
+                      </p>
+                      <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-400">
+                        {paymentStatus.productName} · {paymentStatus.orderNumber} ·{" "}
+                        {formatCurrency(
+                          paymentAmountCents(paymentStatus),
+                          paymentStatus.currency,
+                        )}
+                      </p>
+                      <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">
+                        The vault build starts automatically once the payment is
+                        verified.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {paymentError ? (
+                        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                          <p className="font-medium">Payment couldn&apos;t be completed</p>
+                          <p className="mt-1">{paymentError.message}</p>
+                          {paymentError.kind === "validation" ||
+                          paymentError.kind === "network" ||
+                          paymentError.kind === "server" ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-3"
+                              onClick={
+                                paymentPollsExhausted && checkout
+                                  ? checkPaymentAgain
+                                  : retryPayment
+                              }
+                              loading={paymentLoading}
+                            >
+                              {paymentPollsExhausted && checkout
+                                ? "Check again"
+                                : "Try again"}
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        {checkout?.isSimulated ? (
+                          <Button
+                            onClick={handleSimulatedPay}
+                            loading={paymentLoading}
+                          >
+                            Pay now (simulated)
+                          </Button>
+                        ) : checkout ? (
+                          <span className="inline-flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+                            <span
+                              className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+                              aria-hidden="true"
+                            />
+                            Returning from the payment provider…
+                          </span>
+                        ) : (
+                          <Button onClick={retryPayment} loading={paymentLoading}>
+                            {paymentLoading ? "Opening checkout…" : "Start checkout"}
+                          </Button>
+                        )}
+                        {paymentStatus?.status === "pending" ||
+                        paymentStatus?.status === "processing" ? (
+                          <span className="inline-flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                            <span
+                              className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"
+                              aria-hidden="true"
+                            />
+                            Checking payment status…
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {checkout?.isSimulated ? (
+                        <p className="text-xs text-zinc-400">
+                          Test payment: this button runs the same webhook
+                          pipeline the payment provider uses in production.
+                        </p>
+                      ) : null}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           ) : null}
@@ -780,7 +1083,12 @@ export function WeddingWizard({
           Back
         </Button>
         {step !== "share" ? (
-          <Button onClick={handleNext} loading={busyMessage.length > 0} rightIcon={<IconArrowRight />}>
+          <Button
+            onClick={handleNext}
+            loading={busyMessage.length > 0}
+            disabled={!paymentStepComplete}
+            rightIcon={<IconArrowRight />}
+          >
             {busyMessage || "Continue"}
           </Button>
         ) : null}
@@ -906,10 +1214,10 @@ function BuildStepPanel({
         <div className="rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
           <p className="font-medium">Build failed</p>
           <p className="mt-1">
-            A build requires an order with a completed payment. This wizard does
-            not create real orders — verify that a paid order exists for this
-            wedding (and that names, date, and template are set) before
-            retrying.
+            A build requires an order with a completed payment verified
+            server-side. Complete the checkout on the payment step (or confirm
+            the paid order exists for this wedding — names, date, and template
+            must also be set) before retrying.
           </p>
           <Button variant="outline" size="sm" className="mt-3" onClick={begin}>
             Retry build

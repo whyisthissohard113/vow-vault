@@ -10,7 +10,7 @@
  *  - One-way hash means raw tokens are never retrievable after creation.
  */
 
-import { eq, and, gte } from "drizzle-orm";
+import { eq, and, lt, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { guestSessions } from "@/lib/db/schema";
@@ -174,7 +174,9 @@ export async function revokeGuestSessionById(
 
 /**
  * Increments the upload counter for a guest session.
- * Validates upload limit and rate limiting before incrementing.
+ * Atomic compare-and-swap: the counter is bumped in SQL with a guard that the
+ * session is still under its upload limit, so concurrent completes can never
+ * lose updates or push the count past `maxUploads`.
  *
  * @returns The updated session data.
  */
@@ -186,19 +188,23 @@ export async function incrementUploadCount(
     throw new GuestTokenInvalidError();
   }
 
-  // Re-check upload limit after validation (race condition guard)
-  if (session.uploadCount >= session.maxUploads) {
-    throw new GuestUploadLimitError();
-  }
-
   const [updated] = await db
     .update(guestSessions)
     .set({
-      uploadCount: session.uploadCount + 1,
+      uploadCount: sql`${guestSessions.uploadCount} + 1`,
       lastUsedAt: new Date(),
     })
-    .where(eq(guestSessions.id, session.id))
+    .where(
+      and(
+        eq(guestSessions.id, session.id),
+        lt(guestSessions.uploadCount, guestSessions.maxUploads),
+      ),
+    )
     .returning();
+
+  if (!updated) {
+    throw new GuestUploadLimitError();
+  }
 
   return updated;
 }
@@ -241,7 +247,8 @@ export async function checkUploadRateLimit(
 }
 
 /**
- * Cleans up expired guest sessions (for a cron job or background worker).
+ * Cleans up guest sessions that have already expired (for a cron job or
+ * background worker): their `expires_at` is in the past.
  */
 export async function cleanupExpiredSessions(): Promise<void> {
   const now = new Date();
@@ -252,7 +259,7 @@ export async function cleanupExpiredSessions(): Promise<void> {
     .where(
       and(
         eq(guestSessions.status, "active"),
-        gte(guestSessions.expiresAt, now),
+        lt(guestSessions.expiresAt, now),
       ),
     );
 }

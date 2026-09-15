@@ -171,8 +171,13 @@ export async function enqueueBuild(input: BuildInput): Promise<{
     };
   }
 
-  // Create build job and steps in a transaction
-  const [newJob] = await db.transaction(async (tx) => {
+  // Create build job and steps in a transaction. The unique index on
+  // `build_jobs.idempotency_key` backstops the pre-check above against a
+  // concurrent duplicate enqueue (e.g. payment webhook replay racing a manual
+  // build click): on conflict we insert nothing and let the caller re-read the
+  // winner below instead of crashing with a unique-violation 500.
+  let jobId: string | null = null;
+  await db.transaction(async (tx) => {
     // Create the build job
     const [job] = await tx
       .insert(buildJobs)
@@ -189,7 +194,11 @@ export async function enqueueBuild(input: BuildInput): Promise<{
         maxAttempts: MAX_ATTEMPTS,
         enqueuedAt: new Date(),
       })
+      .onConflictDoNothing({ target: buildJobs.idempotencyKey })
       .returning({ id: buildJobs.id });
+
+    if (!job) return;
+    jobId = job.id;
 
     // Create all build steps
     await tx.insert(buildJobSteps).values(
@@ -200,12 +209,27 @@ export async function enqueueBuild(input: BuildInput): Promise<{
         status: "pending" as const,
       })),
     );
-
-    return [job];
   });
 
+  if (!jobId) {
+    // Lost the race to a concurrent identical enqueue — return the winner.
+    const [existing] = await db
+      .select({ id: buildJobs.id, status: buildJobs.status })
+      .from(buildJobs)
+      .where(eq(buildJobs.idempotencyKey, idempotencyKey))
+      .limit(1);
+    if (!existing) {
+      throw new Error("Build enqueue conflict without an existing job row");
+    }
+    return {
+      buildJobId: existing.id,
+      isNew: false,
+      status: existing.status,
+    };
+  }
+
   return {
-    buildJobId: newJob.id,
+    buildJobId: jobId,
     isNew: true,
     status: "pending",
   };

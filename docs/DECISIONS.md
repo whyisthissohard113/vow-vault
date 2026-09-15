@@ -35,3 +35,77 @@ See `docs/decisions/` for material decisions.
   pin exact instants; callers must not rely on a JNB wall-clock instant.
 - `SWEEPABLE_WEDDING_STATUSES` includes `deletion_pending` (retention tail is
   sweep-reachable), consistent with ADR-011.
+
+## Phase 14 payments contract refinements (2026-09-14, payments worker)
+
+- `PaymentProviderAdapter` surface is `name`, `createCheckout`, `handleWebhook`
+  only. MASTER_SPEC's `verifyPayment` / `refundPayment` / `getPayment`
+  "equivalents" are DB-level functions in the billing service, not network stubs
+  on every adapter. Adapters stay side-effect-free singletons; simulating payment
+  providers does not fake authorization.
+- PayFast signature algorithm is fixed: exclude `signature`, sort keys
+  case-insensitively (byte-level tiebreak), safe-URL-decode each value, join with
+  `&`, append `&passphrase=<passphrase>` only when configured, MD5 hex, verify
+  with constant-time compare. Simulated mode skips PayFast's server-side validate
+  GET but ALWAYS verifies the MD5 signature — there is no unsigned trust path.
+- Checkout idempotency: a second checkout for the same wedding/org/customer/
+  product reuses the existing pending order+payment (looked up via
+  `orders.metadata->>'weddingId'`) instead of failing; crash recovery attaches a
+  fresh payment to a payment-less pending order.
+- Webhook amount rule: PayFast-sent `amount_gross` (cents) must equal the payment
+  `amountCents`, unless an explicit server-side `simulateAmountOverride` is given
+  (simulator only). Signature + merchant affinity checks always run; PENDING /
+  PROCESSING events are informational only and never activate.
+- Payment activation contract: activate only from a verified terminal webhook
+  (never from a browser redirect); activation is a CAS claim on the
+  `payment_events` anchor inside a transaction;
+  `enqueueEmail("payment_success", key "payment_success_<paymentId>")` and
+  `enqueueBuild(key "by_payment_<paymentId>")` run after commit with unique
+  idempotency keys. Known crash window between commit and enqueue (no
+  transactional email/build); reconcile later if ops requires.
+- Billing writes the `payment_verified` lifecycle event directly (deduped on
+  `metadata->>'paymentId'`), mirroring the build engine's event pattern.
+  `wedding.status` is intentionally never changed by payments — the lifecycle
+  engine (ADR-011) remains the sole owner of status transitions.
+- `payment_events.organizationId` is NOT NULL (schema `0002`); a webhook whose
+  payment and order are both unresolvable returns a retryable 500 and writes no
+  events row. Accepted trade-off: PayFast retries; traceability via the unique
+  `provider_event_id` anchor on success.
+- `PAYFAST_MODE` accepts `live | test | simulated` (default `simulated`; unknown
+  values warn and fall back to `simulated`). Production builds hard-disable the
+  simulator route (404) even in test mode.
+
+## Phase 14 QA/security audit adjudication (2026-09-14, orchestrator)
+
+Adjudicating the QA worker's report-only findings on top of the payments
+contract refinements above:
+
+- **Build enqueue race — FIXED.** `enqueueBuild` now inserts with
+  `onConflictDoNothing({ target: build_jobs.idempotency_key })` inside its
+  transaction; on conflict it re-reads and returns the winning job
+  (`isNew: false`) instead of surfacing a unique-violation 500. Verified in
+  tree + covered by the build-engine suite.
+- **`POST /api/auth/register` race — FIXED.** The select-then-insert duplicate
+  email now maps DB error `23505` to a 409 response instead of a 500.
+- **Guest upload init row-spam — DEFERRED.** Every `initiateGuestUpload` creates
+  a media row even if the PUT never completes (fair-use count only moves on
+  complete, so no entitlement burn). Accepted for now: the rows are tenant-scoped
+  and the complete path validates existence, but an init→pending cleanup or an
+  init idempotency key is tracked for a later media/storage phase.
+- **Guest download internal-UUID addressing — DEFERRED.** `GET /api/media/[id]/
+  download` guest path accepts the internal media UUID while public vault routes
+  use `publicId`. Low risk (existence re-scoped to the guest's wedding; UUIDs
+  are never rendered) but a contract inconsistency; consolidate on `publicId`
+  when the guest media surface is next touched.
+- **Presigned URL render-window nuance — ACCEPTED, no action.** A public page
+  render just before `downloadDeadline` can serve a 15-min signed URL briefly
+  after it; client-clock-free and within fair-use policy.
+- **`getLifecycleStatusFromDeadlines` `"expired"` union — INTENTIONAL, no fix.**
+  Post-`download_only` retention is represented by the `expired` status even
+  though the deadline union never returns it.
+- **`checkUploadRateLimit` approximation — OUT OF SCOPE.** Always-allows; a real
+  rate limiter belongs to the Redis/ops workstream.
+
+Verification of the entire phase: `npx vitest run` → 537/537 (21 files,
+including the new `phase14-e2e.test.ts` full-flow proof), `tsc --noEmit` → 0,
+`eslint` → 0.

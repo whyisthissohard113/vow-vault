@@ -23,6 +23,7 @@ import {
   MediaSizeExceededError,
   MediaSignatureRejectedError,
   DuplicateMediaError,
+  ForbiddenError,
 } from "@/lib/auth/errors";
 
 // ── Input Validation ───────────────────────────────────────────────────────────
@@ -117,6 +118,9 @@ async function handleGuestInitUpload(request: NextRequest) {
     }
     if (error instanceof DuplicateMediaError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
     }
     console.error("[API/media/guest/upload/init] Error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

@@ -35,6 +35,7 @@ import {
   organizations,
 } from "@/lib/db/schema";
 import { hashToken } from "@/lib/auth/token-utils";
+import { validateGuestSession } from "@/server/services/guest-sessions";
 import {
   MediaMimeRejectedError,
   MediaSignatureRejectedError,
@@ -52,6 +53,7 @@ import {
   listProcessingJobs,
   getMediaWithVariants,
   getSignedDownloadUrl,
+  getSignedDownloadUrlForGuest,
   resolveEntitlementsForWedding,
   UPLOAD_URL_TTL_SECONDS,
 } from "@/server/services/media-service";
@@ -610,6 +612,56 @@ const row = await getMediaRow(result.mediaId!);
       const jobs = await listProcessingJobs(row!.id, TEST_ORG_ID);
       expect(jobs).toHaveLength(3);
     });
+
+    it("8b. double-completing the same guest upload is idempotent (count stays 1)", async () => {
+      const storage = memoryStorageClient();
+      const { rawToken } = await createGuestSession();
+
+      const result = await initiateGuestUpload(rawToken, {
+        filename: "guest-photo.jpg",
+        contentType: "image/jpeg",
+        sizeBytes: 2_500,
+      });
+
+      const row = await getMediaRowByPublicId(result.publicId!);
+      await storage.putObject(row!.storageKey, await makeJpeg(), { contentType: "image/jpeg" });
+
+      const first = await completeGuestUploadByPublicId(rawToken, result.publicId!, { storage });
+      const second = await completeGuestUploadByPublicId(rawToken, result.publicId!, { storage });
+
+      expect(first.status).toBe("processing");
+      expect(second.status).toBe("processing");
+
+      const [session] = await db
+        .select()
+        .from(guestSessions)
+        .where(eq(guestSessions.id, row!.guestSessionId!))
+        .limit(1);
+      // A duplicate complete must never double-increment the fair-use count.
+      expect(session!.uploadCount).toBe(1);
+    });
+
+    it("8c. denies guest uploads when the wedding is manually closed (status gate)", async () => {
+      const { rawToken } = await createGuestSession();
+
+      // Manual close while the deadline-derived window is still open: the
+      // guest status belt-and-braces must still block uploads.
+      await db
+        .update(weddings)
+        .set({ status: "upload_closed" })
+        .where(eq(weddings.id, TEST_WEDDING_ID));
+
+      const entitlements = await resolveEntitlementsForWedding(TEST_WEDDING_ID, TEST_ORG_ID);
+      expect(entitlements.uploadOpen).toBe(true);
+
+      await expect(
+        initiateGuestUpload(rawToken, {
+          filename: "late.jpg",
+          contentType: "image/jpeg",
+          sizeBytes: 100,
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenError);
+    });
   });
 
   describe("processing worker & retries", () => {
@@ -762,6 +814,52 @@ const row = await getMediaRow(result.mediaId!);
           entitlements: closedEntitlements,
           storage,
         }),
+      ).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it("13. denies guest downloads via the status gate even while the window is open", async () => {
+      const storage = memoryStorageClient();
+
+      // Seat a processed media item for the guest's vault.
+      const seedId = randomUUID();
+      const seedKey = `${TEST_ORG_ID}/${TEST_WEDDING_ID}/${seedId}.jpg`;
+      await db.insert(media).values({
+        id: seedId,
+        publicId: seedId.replace(/-/g, "").slice(0, 32),
+        weddingId: TEST_WEDDING_ID,
+        organizationId: TEST_ORG_ID,
+        storageKey: seedKey,
+        filename: "finished.jpg",
+        contentType: "image/jpeg",
+        sizeBytes: 1_000,
+        status: "processed",
+      });
+
+      const rawToken = randomUUID().replace(/-/g, "");
+      await db.insert(guestSessions).values({
+        vaultId: TEST_VAULT_ID,
+        organizationId: TEST_ORG_ID,
+        token: hashToken(rawToken),
+        displayName: "Guest Download",
+        status: "active",
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        maxUploads: 100,
+      });
+      const sessionData = await validateGuestSession(rawToken);
+      if (!sessionData) throw new Error("expected guest session");
+
+      // `download_only` is outside GUEST_DOWNLOAD_ALLOWED_WEDDING_STATUSES but
+      // the deadline-derived window is still open in these fixtures.
+      await db
+        .update(weddings)
+        .set({ status: "download_only" })
+        .where(eq(weddings.id, TEST_WEDDING_ID));
+
+      const entitlements = await resolveEntitlementsForWedding(TEST_WEDDING_ID, TEST_ORG_ID);
+      expect(entitlements.downloadOpen).toBe(true);
+
+      await expect(
+        getSignedDownloadUrlForGuest(seedId, sessionData, { storage }),
       ).rejects.toBeInstanceOf(ForbiddenError);
     });
   });

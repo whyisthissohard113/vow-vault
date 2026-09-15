@@ -103,7 +103,15 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
-    // Don't leak internal errors
+    // A concurrent registration with the same email can pass the pre-check
+    // above and then lose on the DB unique index — surface that as a clean 409
+    // instead of a 500. Never leak internal errors.
+    if ((error as { code?: string })?.code === "23505") {
+      return NextResponse.json(
+        { error: "An account with this email already exists" },
+        { status: 409 },
+      );
+    }
     console.error("[REGISTER] Unhandled error:", error);
     return NextResponse.json(
       { error: "Internal server error" },

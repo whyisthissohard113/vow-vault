@@ -22,6 +22,7 @@ import {
   formatBytes,
 } from "@/lib/format";
 import { BuildWeddingButton } from "./build-button";
+import { CheckoutButton } from "../checkout-actions";
 
 export const metadata: Metadata = {
   title: "Wedding details",
@@ -50,6 +51,7 @@ export default async function WeddingDetailPage({
   if (!detail) notFound();
 
   const canManage = hasPermission(tenant.role, Permission.MANAGE_WEDDING);
+  const canManagePayments = hasPermission(tenant.role, Permission.MANAGE_PAYMENTS);
   const vaultUrl = detail.vault?.slug
     ? `${serverUrl()}/w/${detail.vault.slug}`
     : null;
@@ -205,6 +207,36 @@ export default async function WeddingDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {detail.package ? (
+        <Card>
+          <CardHeader
+            title="Package & payment"
+            description="One-time purchase that activates the vault build once verified server-side."
+          />
+          <CardContent className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge tone="brand">{detail.package.name}</Badge>
+                <span className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                  {formatCurrency(detail.package.priceCents, detail.package.currency)}
+                </span>
+              </div>
+              <span className="text-xs uppercase tracking-wider text-zinc-400">
+                {detail.package.code}
+              </span>
+            </div>
+            <div className="rounded-xl border border-zinc-100 px-4 py-4 dark:border-zinc-800">
+              <CheckoutButton
+                weddingId={detail.weddingId}
+                canCheckout={canManagePayments}
+                autoStart
+                label="Pay for this package"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader

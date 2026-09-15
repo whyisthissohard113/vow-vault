@@ -45,6 +45,10 @@ import {
   incrementUploadCount,
   type GuestSessionData,
 } from "@/server/services/guest-sessions";
+import {
+  GUEST_UPLOAD_ALLOWED_WEDDING_STATUSES,
+  GUEST_DOWNLOAD_ALLOWED_WEDDING_STATUSES,
+} from "@/server/lifecycle/policy";
 import { createStorageClient, type StorageClient, type ObjectHead } from "@/server/services/storage/client";
 import {
   buildObjectKey,
@@ -179,11 +183,16 @@ export async function resolveGuestEntitlements(
 async function loadGuestScope(guestSession: GuestSessionData): Promise<{
   vaultId: string;
   weddingId: string;
+  weddingStatus: (typeof weddings.$inferSelect)["status"];
   entitlements: ResolvedEntitlements;
 }> {
-  const [vault] = await db
-    .select()
+  const [row] = await db
+    .select({
+      vault: vaults,
+      wedding: weddings,
+    })
     .from(vaults)
+    .innerJoin(weddings, eq(weddings.id, vaults.weddingId))
     .where(
       and(
         eq(vaults.id, guestSession.vaultId),
@@ -193,14 +202,21 @@ async function loadGuestScope(guestSession: GuestSessionData): Promise<{
     )
     .limit(1);
 
-  if (!vault) throw new NotFoundError("Vault");
+  if (!row) throw new NotFoundError("Vault");
+
+  const { vault, wedding } = row;
 
   const entitlements = await resolveEntitlementsForWedding(
     vault.weddingId,
     guestSession.organizationId,
   );
 
-  return { vaultId: vault.id, weddingId: vault.weddingId, entitlements };
+  return {
+    vaultId: vault.id,
+    weddingId: vault.weddingId,
+    weddingStatus: wedding.status,
+    entitlements,
+  };
 }
 
 // ── Upload initialization ─────────────────────────────────────────────────────
@@ -343,7 +359,15 @@ export async function initiateGuestUpload(
   const session = await validateGuestSession(rawToken);
   if (!session) throw new GuestTokenInvalidError();
 
-  const { entitlements, weddingId } = await loadGuestScope(session);
+  const { entitlements, weddingId, weddingStatus } = await loadGuestScope(session);
+
+  // Explicit status belt-and-braces (policy
+  // `GUEST_UPLOAD_ALLOWED_WEDDING_STATUSES`) on top of the deadline-derived
+  // `uploadOpen` — a manually closed wedding (e.g. `upload_closed`) never
+  // re-opens uploads for tokens issued earlier.
+  if (!GUEST_UPLOAD_ALLOWED_WEDDING_STATUSES.includes(weddingStatus)) {
+    throw new ForbiddenError("Uploads are not open for this wedding");
+  }
 
   const ctx: MediaUploadContext = {
     organizationId: session.organizationId,
@@ -404,6 +428,13 @@ export async function completeGuestUploadByPublicId(
 
   if (!mediaRow) throw new NotFoundError("Media");
 
+  // Idempotent re-post: a media row that already left `uploaded` was completed
+  // successfully. Return success WITHOUT re-incrementing the fair-use count or
+  // re-running validation so a duplicate complete request is a no-op.
+  if (mediaRow.status !== "uploaded") {
+    return { status: "processing", publicId };
+  }
+
   await completeUploadRow(mediaRow, {
     storage: options.storage,
     guestToken: rawToken,
@@ -423,12 +454,6 @@ async function completeUploadRow(
 ): Promise<void> {
   const { organizationId, id, storageKey, weddingId, contentType } = mediaRow;
   const storage = options.storage ?? createStorageClient();
-
-  // Guest fair-use count: incrementUploadCount re-validates the raw token
-  // server-side, then bumps the session's counter (server-authoritative).
-  if (options.guestToken) {
-    await incrementUploadCount(options.guestToken);
-  }
 
   let head: ObjectHead;
   try {
@@ -466,6 +491,14 @@ async function completeUploadRow(
     .where(eq(media.id, id));
 
   await enqueueProcessingJobs(id, organizationId);
+
+  // Guest fair-use count: incremented ONLY after the object was verified and
+  // the media moved to `processing` (a failed/aborted completion never burns a
+  // guest's upload budget). incrementUploadCount re-validates the raw token
+  // server-side and bumps the counter atomically.
+  if (options.guestToken) {
+    await incrementUploadCount(options.guestToken);
+  }
 }
 
 // ── Processing-job maintenance ─────────────────────────────────────────────────
@@ -660,7 +693,7 @@ export async function getSignedDownloadUrlForGuest(
     storage?: StorageClient;
   } = {},
 ): Promise<SignedDownloadResult> {
-  const { entitlements, weddingId } = await loadGuestScope(guestSession);
+  const { entitlements, weddingId, weddingStatus } = await loadGuestScope(guestSession);
 
   const [mediaRow] = await db
     .select()
@@ -681,6 +714,13 @@ export async function getSignedDownloadUrlForGuest(
 
   if (!entitlements.downloadOpen) {
     throw new ForbiddenError("Download window has closed");
+  }
+
+  // Explicit status belt-and-braces (policy
+  // `GUEST_DOWNLOAD_ALLOWED_WEDDING_STATUSES`) mirroring the public vault
+  // route: a mis-set status never re-opens downloads.
+  if (!GUEST_DOWNLOAD_ALLOWED_WEDDING_STATUSES.includes(weddingStatus)) {
+    throw new ForbiddenError("Downloads are not open for this wedding");
   }
 
   const target = await resolveDownloadTarget(mediaRow, guestSession.organizationId, options.variant);

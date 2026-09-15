@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import { getQrCode } from "@/server/services/qr-service";
 import { generateQrCardPng } from "@/server/services/qr-card-generator";
+import { resolveWeddingEntitlements, assertFeature } from "@/server/middleware/entitlements";
 import {
   withAuth,
   withTenant,
@@ -79,6 +80,14 @@ async function handleGenerateCard(
         { status: 400 },
       );
     }
+
+    // QR design cards are a Platinum feature: server-side entitlement gate
+    // before any card is rendered (silver/gold get a 403, never a card).
+    const entitlements = await resolveWeddingEntitlements(
+      qrCode.weddingId,
+      tenant,
+    );
+    assertFeature(entitlements, "qr_design_card");
 
     // Generate the card
     const card = await generateQrCardPng({

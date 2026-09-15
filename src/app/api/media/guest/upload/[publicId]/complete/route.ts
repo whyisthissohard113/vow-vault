@@ -18,7 +18,9 @@ import {
   GuestTokenExpiredError,
   GuestTokenInvalidError,
   GuestTokenRevokedError,
+  GuestUploadLimitError,
   NotFoundError,
+  ForbiddenError,
 } from "@/lib/auth/errors";
 
 // ── Route Handler ──────────────────────────────────────────────────────────────
@@ -51,6 +53,12 @@ async function handleGuestCompleteUpload(
     }
     if (error instanceof NotFoundError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+    if (error instanceof GuestUploadLimitError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
     }
     console.error("[API/media/guest/upload/[publicId]/complete] Error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
