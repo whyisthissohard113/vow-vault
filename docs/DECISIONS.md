@@ -185,3 +185,47 @@ but partial-unique indexes ignore primary keys. Check partial-unique indexes in
 - **GHCR registry target**: `ghcr.io/whyisthissohard113/vow-vault`. Uses the
   built-in `GITHUB_TOKEN` with `packages: write`; no extra credentials needed for
   the build/push path.
+
+## Phase 17 marketing redesign (2026-09-15, frontend worker)
+
+- **Marketing site is branded "Vow Vault"** and completely rebuilt as a premium
+  wedding-editorial system. The dashboard, auth flows and public vault
+  (`w/[slug]`) are intentionally untouched — they still read the legacy CSS
+  tokens (`--rose-brand`, `--rose-soft`, `--gold`, `--sand`, `--background`,
+  `--surface`) which are preserved as aliases in `src/styles/tokens.css`.
+- **New design tokens** live in `src/styles/tokens.css`: warm ivory page,
+  deep charcoal brand (`--brand`), muted champagne gold accent (`--accent`),
+  soft blush secondary, plus motion/elevation/radius scales. `globals.css`
+  maps them into Tailwind v4 `@theme inline` utilities (`bg-brand`,
+  `text-accent-deep`, `border-line`, …). The CSS `@import` of tokens.css uses a
+  **relative path** (`../styles/tokens.css`) because Turbopack cannot resolve
+  the `@/` TS path alias inside CSS files (build error resolved 2026-09-15).
+- **Canonical pricing stays single-source**: marketing prices/limits/expiry
+  windows come from `src/content/packages.ts` / `src/content/faqs.ts`, which
+  import the canonical `src/lib/entitlements/packages.ts` and `src/lib/format.ts`.
+  Marketers only edit content files; product facts cannot diverge.
+- **Removed marketing-only CSS utility classes** `.btn-primary`, `.btn-secondary`
+  and `.polaroid*` from `globals.css` (all marketing call sites rewritten to use
+  the tokenized `Button` primitive or inline classes). Grep-verified: no
+  remaining references in `src/`. Dashboard/auth/public-vault styles were not
+  touched.
+- **Demo content is explicitly flagged**: all testimonials (`src/content/
+  testimonials.ts`) are `demo: true` with a visible "Demo — fictional" label;
+  trust-bar numbers are `isDevelopmentPlaceholder: true` with an on-page note;
+  example weddings are fictional couples rendered entirely from local SVG
+  artwork (`<DemoArtwork/>`) — no real photos, no storage access.
+- **FAQ/package copy uses exact product facts**: Silver 2/7 days, Gold 7/30,
+  Platinum 7/90 upload/download windows (Africa/Johannesburg-derived deadlines,
+  UTC-stored) are authored in `src/content/faqs.ts` from
+  `getPackageExpiryWindows()`.
+- **Legacy `/pricing` redirects** (307 via `redirect("/packages")`) because
+  every marketing nav/footer/sitemap now points at `/packages`; the old route
+  kept a stale design and duplicated content.
+- **Private/public surface separation in robots/sitemap**: `robots.ts` disallows
+  `/w/`, `/api/`, `/dashboard`, `/admin`, auth routes; `sitemap.ts` lists only
+  marketing routes + the six fictional example themes (`/examples/[themeId]`,
+  SSG via `generateStaticParams`) + the three tier showcases.
+- **Frontend-only phase, no server changes**: no API, DB, entitlement or
+  lifecycle contract changed. Verification: `tsc --noEmit` 0 · `eslint` 0 ·
+  `next build` ✓ (69 static/dynamic pages including preserved auth, dashboard,
+  api and public-vault routes).

@@ -1,12 +1,14 @@
 /**
- * Button — hand-rolled button primitive with the zinc palette used across the
- * app (matching the guest-facing components). Server-safe; event handlers are
- * only wired when used inside client components.
+ * Button — hand-rolled button primitive on the Vow Vault token system.
+ *
+ * API is backward compatible with the previous zinc-palette version (same
+ * variants, sizes and props), so dashboard and auth flows keep working.
+ * Added variant: `accent` (champagne gold) for the marketing site.
  */
 
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "outline";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "outline" | "accent";
 export type ButtonSize = "sm" | "md" | "lg";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -20,13 +22,15 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200 disabled:hover:bg-zinc-900 dark:disabled:hover:bg-zinc-50",
+    "bg-brand text-[#fbf7f0] hover:bg-brand-soft disabled:hover:bg-brand dark:bg-[#fbf7f0] dark:text-brand dark:hover:bg-white",
   secondary:
-    "bg-zinc-100 text-zinc-900 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700",
+    "bg-blush text-ink hover:bg-blush-deep disabled:hover:bg-blush dark:bg-brand-soft dark:text-ivory dark:hover:bg-brand",
   outline:
-    "border border-zinc-300 bg-transparent text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900",
+    "border border-line bg-transparent text-ink hover:bg-ivory-deep dark:border-line dark:text-ivory dark:hover:bg-brand-soft",
   ghost:
-    "bg-transparent text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-50",
+    "bg-transparent text-muted hover:bg-ivory-deep hover:text-ink dark:text-ivory dark:hover:bg-brand-soft",
+  accent:
+    "bg-accent text-white hover:bg-accent-deep disabled:hover:bg-accent dark:bg-accent dark:hover:bg-accent-deep",
   danger:
     "bg-red-600 text-white hover:bg-red-500 dark:bg-red-600 dark:hover:bg-red-500",
 };
@@ -54,7 +58,7 @@ export function Button({
     <button
       type={type}
       disabled={disabled || loading}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${sizeClasses[size]} ${
+      className={`inline-flex items-center justify-center gap-2 rounded-full font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${sizeClasses[size]} ${
         fullWidth ? "w-full" : ""
       } ${className}`}
       {...rest}

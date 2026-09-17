@@ -1,79 +1,135 @@
-import Link from "next/link";
-import Image from "next/image";
+import type { Metadata } from "next";
 
 import { SiteHeader } from "@/components/marketing/site-header";
 import { SiteFooter } from "@/components/marketing/site-footer";
-import { IconArrowRight } from "@/components/icons";
-import { PACKAGE_METADATA } from "@/lib/entitlements/packages";
-import { formatCurrency } from "@/lib/format";
+import { Pricing } from "@/components/marketing/pricing";
+import { FinalCta } from "@/components/marketing/final-cta";
+import { ExampleCard, TierExampleCard, type TierCardData } from "@/components/examples/example-card";
+import { EXAMPLES, TIER_SHOWCASES } from "@/content/examples";
+import { TIER_DEMOS } from "@/lib/examples/tier-demos";
+import { SITE_NAME } from "@/content/site";
 
-export default function Examples() {
+export const metadata: Metadata = {
+  title: `Example Vaults — ${SITE_NAME}`,
+  description:
+    "Explore real-feeling wedding vaults and experience what your guests will see on the big day. Six fictional themed weddings, plus the Silver, Gold and Platinum package experiences.",
+  alternates: { canonical: "/examples" },
+};
+
+const TIER_CARDS: TierCardData[] = [
+  {
+    tier: "silver",
+    label: "Silver",
+    tagline: TIER_SHOWCASES.silver.tagline,
+    highlights: ["Photo gallery", "Guest uploads", "QR access", "Custom colours"],
+  },
+  {
+    tier: "gold",
+    label: "Gold",
+    tagline: TIER_SHOWCASES.gold.tagline,
+    highlights: ["Video", "Live slideshow", "Custom banner", "Unlimited photos*"],
+  },
+  {
+    tier: "platinum",
+    label: "Platinum",
+    tagline: TIER_SHOWCASES.platinum.tagline,
+    highlights: ["Intro media", "Flipbook", "QR design cards", "90-day downloads"],
+  },
+];
+
+export default function ExamplesPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <SiteHeader />
 
-      <section className="container-page py-16 sm:py-20">
-        <div className="mx-auto max-w-3xl text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-rose-brand">Real examples</p>
-          <h1 className="mt-3 font-display text-4xl font-semibold tracking-tight text-stone-900 sm:text-5xl">
-            See the packages in practice
-          </h1>
-          <p className="mx-auto mt-5 text-lg text-stone-600">
-            Each example showcases the vault design, gallery style and features
-            available at that tier.
+      {/* Page hero */}
+      <section className="relative overflow-hidden">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 opacity-70"
+          style={{ background: "radial-gradient(60% 55% at 50% 0%, rgba(176,141,87,0.16), transparent 72%)" }}
+        />
+        <div className="container-page relative pb-10 pt-16 sm:pt-20">
+          <div className="mx-auto max-w-3xl">
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-accent-deep">
+              Examples
+            </p>
+            <h1 className="mt-3 font-display text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
+              See Vow Vault in action
+            </h1>
+            <p className="mt-5 max-w-2xl text-base leading-relaxed text-muted sm:text-lg">
+              Explore real-feeling wedding vaults and experience what your guests will see on the
+              big day. Every couple, venue, guest and memory below is fictional demo data — but
+              every interaction is the real product feel.
+            </p>
+            <p className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-full border border-line-soft px-4 py-1.5 text-xs font-medium text-faint">
+              No real photos · no real couples · nothing uploaded or stored
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Six themed demo vaults */}
+      <section id="examples" className="container-page py-12 sm:py-16">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-accent-deep">
+              Six themed vaults
+            </p>
+            <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+              Pick a wedding style to explore
+            </h2>
+          </div>
+          <p className="max-w-sm text-sm text-muted">
+            Each opens as a full-screen, interactive vault — open any memory, add a photo, leave a
+            message.
           </p>
         </div>
 
-        <div className="mt-14 grid gap-6 md:grid-cols-3">
-          {PACKAGE_METADATA.map((pkg) => (
-            <Link
-              key={pkg.code}
-              href={`/examples/${pkg.code}`}
-              className="group card-soft overflow-hidden border border-stone-200/70 bg-white transition-all hover:-translate-y-1 hover:shadow-lg"
-            >
-              <div className="relative aspect-[4/3] overflow-hidden bg-sand">
-                <Image
-                  src="/placeholder-wedding.svg"
-                  alt={`${pkg.name} wedding example`}
-                  fill
-                  unoptimized
-                  className="object-cover transition-transform duration-500 group-hover:scale-105"
-                  sizes="(min-width: 768px) 33vw, 100vw"
-                />
-              </div>
-              <div className="p-6">
-                <h2 className="font-display text-xl font-semibold text-stone-900">{pkg.name}</h2>
-                <p className="mt-2 text-sm leading-relaxed text-stone-600">{pkg.description}</p>
-                <div className="mt-4 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-stone-900">
-                    {formatCurrency(pkg.priceCents, pkg.currency)}
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-rose-brand">
-                    View example
-                    <IconArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                  </span>
-                </div>
-              </div>
-            </Link>
+        <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {EXAMPLES.map((wedding) => (
+            <ExampleCard key={wedding.id} wedding={wedding} />
           ))}
         </div>
       </section>
 
-      <section className="container-page pb-20">
-        <div className="rounded-3xl bg-stone-900 px-8 py-16 text-center sm:px-16">
-          <h2 className="font-display text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-            Find the right package for your couple
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-lg text-stone-300">
-            From Silver&apos;s basic gallery to Platinum&apos;s premium experience, there&apos;s a
-            package for every wedding budget and vision.
+      {/* Package experiences */}
+      <section className="border-y border-line-soft bg-ivory-deep/60">
+        <div className="container-page py-12 sm:py-16">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-accent-deep">
+                Silver · Gold · Platinum
+              </p>
+              <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+                Explore each package as a real vault
+              </h2>
+            </div>
+            <p className="max-w-sm text-sm text-muted">
+              Same product, different capabilities — exactly as the real packages ship. Capability
+              gates come from the canonical feature list.
+            </p>
+          </div>
+
+          <div className="mt-10 grid gap-6 md:grid-cols-3">
+            {TIER_DEMOS.map((demo) => (
+              <TierExampleCard
+                key={demo.slug}
+                data={TIER_CARDS.find((card) => card.tier.toLowerCase() === demo.slug) ?? TIER_CARDS[0]}
+                wedding={demo.wedding}
+              />
+            ))}
+          </div>
+
+          <p className="mt-6 text-xs text-faint">
+            *Unlimited is an entitlement, not an absence of fair-use safeguards.
           </p>
-          <Link href="/pricing" className="btn-primary mt-8 h-12">
-            <span>View all packages</span>
-            <IconArrowRight className="h-4 w-4" />
-          </Link>
         </div>
       </section>
+
+      <Pricing />
+
+      <FinalCta />
 
       <SiteFooter />
     </div>

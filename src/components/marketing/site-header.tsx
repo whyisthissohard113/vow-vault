@@ -1,99 +1,103 @@
 "use client";
 
 /**
- * SiteHeader — sticky marketing header used on every public page.
- * Same container width on all pages keeps the chrome aligned.
+ * SiteHeader — sticky Vow Vault marketing header.
+ * Desktop nav plus an accessible mobile menu panel.
  */
 
 import Link from "next/link";
 import { useState } from "react";
 
-import { IconBrand, IconMenu } from "@/components/icons";
-
-const NAV_LINKS = [
-  { href: "/#how", label: "How it works" },
-  { href: "/#inside", label: "What's inside" },
-  { href: "/#packages", label: "Pricing" },
-  { href: "/examples", label: "Examples" },
-];
+import { IconBrand, IconMenu, IconClose } from "@/components/icons";
+import { PRIMARY_NAV, AUTH_LINKS } from "@/content/navigation";
+import { SITE_NAME, PRIMARY_CTA } from "@/content/site";
+import { cn } from "@/lib/utils";
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-stone-200/70 bg-white/80 backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b border-line-soft bg-ivory/85 backdrop-blur-md">
       <div className="container-page flex h-16 items-center justify-between gap-4">
-        <Link href="/" className="flex items-center gap-2" aria-label="Wedding Memory Vault home">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-brand">
-            <IconBrand className="h-5 w-5 text-white" />
+        <Link href="/" className="flex items-center gap-2.5" aria-label={`${SITE_NAME} home`}>
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-accent-glow shadow-[var(--shadow-soft)]">
+            <IconBrand className="h-5 w-5" />
           </span>
-          <span className="font-display text-lg font-semibold tracking-tight text-stone-900">
-            Wedding Memory Vault
+          <span className="font-display text-xl font-semibold tracking-tight text-ink">
+            Vow Vault
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-1 md:flex" aria-label="Main">
-          {NAV_LINKS.map((link) => (
+        <nav className="hidden items-center gap-1 lg:flex" aria-label="Main">
+          {PRIMARY_NAV.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="rounded-full px-4 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-sand hover:text-stone-900"
+              className="rounded-full px-4 py-2 text-sm font-medium text-muted transition-colors hover:bg-blush hover:text-ink"
             >
               {link.label}
             </Link>
           ))}
-          <Link
-            href="/login"
-            className="rounded-full px-4 py-2 text-sm font-semibold text-stone-700 transition-colors hover:text-stone-900"
-          >
-            Sign in
-          </Link>
-          <Link
-            href="/register"
-            className="ml-2 inline-flex h-10 items-center justify-center rounded-full bg-stone-900 px-5 text-sm font-semibold text-white transition-all hover:bg-rose-brand"
-          >
-            Create your vault
-          </Link>
         </nav>
+
+        <div className="hidden items-center gap-2 lg:flex">
+          <Link
+            href={AUTH_LINKS.login.href}
+            className="rounded-full px-4 py-2 text-sm font-semibold text-muted transition-colors hover:text-ink"
+          >
+            {AUTH_LINKS.login.label}
+          </Link>
+          <Link
+            href={AUTH_LINKS.register.href}
+            className="inline-flex h-10 items-center justify-center rounded-full bg-brand px-5 text-sm font-semibold text-ivory shadow-[var(--shadow-soft)] transition-all hover:bg-brand-soft"
+          >
+            {PRIMARY_CTA.label}
+          </Link>
+        </div>
 
         <button
           type="button"
-          className="rounded-lg p-2 text-stone-600 hover:bg-sand md:hidden"
-          onClick={() => setOpen((o) => !o)}
+          className="rounded-lg p-2 text-ink hover:bg-blush lg:hidden"
+          onClick={() => setOpen((value) => !value)}
           aria-expanded={open}
+          aria-controls="mobile-nav"
           aria-label="Toggle menu"
         >
-          <IconMenu className="h-5 w-5" />
+          {open ? <IconClose className="h-5 w-5" /> : <IconMenu className="h-5 w-5" />}
         </button>
       </div>
 
       {open ? (
-        <nav className="container-page border-t border-stone-200/70 py-4 md:hidden" aria-label="Mobile">
+        <nav id="mobile-nav" className="container-page border-t border-line-soft py-4 lg:hidden" aria-label="Mobile">
           <div className="flex flex-col gap-1">
-            {NAV_LINKS.map((link) => (
+            {PRIMARY_NAV.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={() => setOpen(false)}
-                className="rounded-lg px-3 py-2 text-sm font-medium text-stone-700 hover:bg-sand"
+                className="rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-blush hover:text-ink"
               >
                 {link.label}
               </Link>
             ))}
-            <Link
-              href="/login"
-              onClick={() => setOpen(false)}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-stone-700 hover:bg-sand"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/register"
-              onClick={() => setOpen(false)}
-              className="mt-2 inline-flex h-11 items-center justify-center rounded-full bg-stone-900 px-5 text-sm font-semibold text-white"
-            >
-              Create your vault
-            </Link>
+            <div className="mt-3 flex flex-col gap-2 border-t border-line-soft pt-3">
+              <Link
+                href={AUTH_LINKS.login.href}
+                onClick={() => setOpen(false)}
+                className={cn(
+                  "inline-flex h-11 items-center justify-center rounded-full border border-line px-5 text-sm font-semibold text-ink transition-colors hover:bg-blush",
+                )}
+              >
+                {AUTH_LINKS.login.label}
+              </Link>
+              <Link
+                href={AUTH_LINKS.register.href}
+                onClick={() => setOpen(false)}
+                className="inline-flex h-11 items-center justify-center rounded-full bg-brand px-5 text-sm font-semibold text-ivory transition-colors hover:bg-brand-soft"
+              >
+                {PRIMARY_CTA.label}
+              </Link>
+            </div>
           </div>
         </nav>
       ) : null}

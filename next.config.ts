@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
    * traces can embed drive-letter paths that break Linux images).
    */
   output: "standalone",
+  distDir: ".next-ci",
 };
 
 export default nextConfig;

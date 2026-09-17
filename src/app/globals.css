@@ -1,27 +1,46 @@
 @import "tailwindcss";
-
-:root {
-  --background: #faf7f2;
-  --foreground: #211a16;
-  --surface: #ffffff;
-  --sand: #f4eee5;
-  --ink: #211a16;
-  --rose-brand: #e11d48;
-  --rose-soft: #fff1f2;
-  --gold: #c8934a;
-}
+@import "../styles/tokens.css";
 
 @theme inline {
+  /* Brand palette */
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-ink: var(--brand-ink);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-pale: var(--accent-pale);
+  --color-accent-glow: var(--accent-glow);
+  --color-ivory: var(--ivory);
+  --color-ivory-deep: var(--ivory-deep);
+  --color-blush: var(--blush);
+  --color-blush-deep: var(--blush-deep);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+
+  /* Legacy tokens (dashboard / auth / public vault still reference them) */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
   --color-sand: var(--sand);
-  --color-ink: var(--ink);
   --color-rose-brand: var(--rose-brand);
   --color-rose-soft: var(--rose-soft);
   --color-gold: var(--gold);
-  --font-sans: var(--font-geist-sans);
-  --font-display: var(--font-fraunces);
+
+  /* Fonts */
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+
+  /* Radius */
+  --radius-xs: 0.25rem;
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
 }
 
 html {
@@ -33,41 +52,245 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
+/* Elegant warm selection */
 ::selection {
-  background: #fecdd3;
-  color: #881337;
+  background: var(--accent-pale);
+  color: var(--brand-ink);
+}
+
+/* Visible, accessible keyboard focus everywhere */
+:focus-visible {
+  outline: 2px solid var(--accent-deep);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 .font-display {
   font-family: var(--font-display);
 }
 
-/* Warm, editorial section rhythm */
+/* ── Layout containers ──────────────────────────────────────────────────── */
 .container-page {
-  @apply mx-auto w-full max-w-6xl px-5 sm:px-8;
+  margin-inline: auto;
+  width: 100%;
+  max-width: 72rem; /* 1152px */
+  padding-inline: 1.25rem;
+}
+@media (min-width: 640px) {
+  .container-page {
+    padding-inline: 2rem;
+  }
 }
 
-/* Soft polaroid-style photo placeholder used across marketing pages */
-.polaroid {
-  @apply rounded-xl bg-white p-3 shadow-[0_2px_20px_rgba(33,26,22,0.12)] ring-1 ring-black/5;
+.container-wide {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 80rem; /* 1280px */
+  padding-inline: 1.25rem;
+}
+@media (min-width: 640px) {
+  .container-wide {
+    padding-inline: 2rem;
+  }
 }
 
-.polaroid-caption {
-  @apply mt-3 text-center font-display text-sm tracking-wide text-stone-600;
+.container-narrow {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 48rem; /* 768px */
+  padding-inline: 1.25rem;
+}
+@media (min-width: 640px) {
+  .container-narrow {
+    padding-inline: 2rem;
+  }
 }
 
-/* Consistent card surface */
+/* ── Consistent card surface (shared with dashboard ui primitives) ──────── */
 .card-soft {
-  @apply rounded-2xl border border-stone-200/80 bg-surface shadow-[0_1px_3px_rgba(33,26,22,0.06)];
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
 }
 
-/* Primary CTA — warm rose */
-.btn-primary {
-  @apply inline-flex h-12 items-center justify-center gap-2 rounded-full bg-rose-brand px-7 text-sm font-semibold text-white transition-all hover:bg-stone-900 hover:shadow-lg;
+/* ── Interactive example vaults ─────────────────────────────────────────────
+   The six demo vaults each expose their own visual identity through the CSS
+   custom properties set by `vaultStyleVars()` (see `src/lib/examples/vault-themes.ts`).
+   These utilities consume those runtime variables so the shared vault
+   components restyle themselves per wedding theme. */
+.vault-root {
+  background-color: var(--vault-bg);
+  color: var(--vault-ink);
 }
 
-.btn-secondary {
-  @apply inline-flex h-12 items-center justify-center gap-2 rounded-full border border-stone-300 bg-transparent px-7 text-sm font-semibold text-stone-700 transition-colors hover:border-stone-400 hover:bg-white;
+.vault-surface {
+  background-color: var(--vault-surface);
+}
+
+.vault-surface-elevated {
+  background-color: var(--vault-surface-elevated);
+}
+
+.vault-texture {
+  background-image: var(--vault-texture);
+}
+
+.vault-ink {
+  color: var(--vault-ink);
+}
+
+.vault-muted {
+  color: var(--vault-muted);
+}
+
+.vault-line {
+  border-color: var(--vault-line);
+}
+
+.vault-accent {
+  color: var(--vault-accent);
+}
+
+.vault-accent-bg {
+  background-color: var(--vault-accent);
+  color: var(--vault-accent-ink);
+}
+
+.vault-accent-ink {
+  color: var(--vault-accent-ink);
+}
+
+.vault-accent-soft {
+  background-color: color-mix(in srgb, var(--vault-accent) 14%, transparent);
+}
+
+.vault-hover-accent:hover {
+  background-color: color-mix(in srgb, var(--vault-accent) 12%, transparent);
+}
+
+.vault-accent-border {
+  border-color: color-mix(in srgb, var(--vault-accent) 40%, transparent);
+}
+
+.vault-accent-ring {
+  --tw-ring-color: color-mix(in srgb, var(--vault-accent) 60%, transparent);
+}
+
+.vault-radius {
+  border-radius: var(--vault-radius);
+}
+
+.vault-scrim {
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--vault-bg) 96%, transparent) 8%,
+    color-mix(in srgb, var(--vault-bg) 72%, transparent) 42%,
+    transparent 100%
+  );
+}
+
+/* Themes that do not use the serif display face (e.g. Modern Minimal) render
+   headings in the body face inside the vault, without touching the rest of the
+   site's typography. */
+.vault-root[data-vault-display="sans"] .font-display {
+  font-family: var(--font-sans);
+}
+
+/* ── Scroll reveal (driven by <Reveal />, with reduced-motion fallback) ── */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity var(--duration-slow) var(--ease-out-soft),
+    transform var(--duration-slow) var(--ease-out-soft);
+  will-change: opacity, transform;
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Gentle floating for hero visuals */
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 7s ease-in-out infinite;
+}
+
+/* Soft gold shimmer for live indicators */
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+
+.animate-live-pulse {
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+/* Platinum intro playback bar (runs once when the intro is played) */
+@keyframes demo-progress {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+/* QR demo "scanning" line */
+@keyframes scan-line {
+  0% {
+    transform: translateY(0);
+    opacity: 0.25;
+  }
+  50% {
+    transform: translateY(9rem);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 0.25;
+  }
+}
+
+/* Respect motion preferences globally */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+  .animate-float-slow,
+  .animate-live-pulse {
+    animation: none !important;
+  }
 }
